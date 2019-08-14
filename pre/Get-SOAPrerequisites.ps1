@@ -283,12 +283,12 @@ Function Install-SkypeConnector {
             # Make a check to determine if we are probably installed
             If(Test-Path "C:\Program Files\Common Files\Skype for Business Online\Modules\SkypeOnlineConnector\SkypeOnlineConnector.psd1") {
                 $Installed = $True
+                # Reload the PSEnvPath
+                $env:PSModulePath = [System.Environment]::GetEnvironmentVariable("PSModulePath","Machine")
             }
         }
 
     } While ($Installed -eq $False -or $Wait -ge $MaxWait)
-
-    Write-Host "$(Get-Date) Skype Online Connector Installed, you will need to close and re-run this script."
 
     Return $Installed
 
@@ -430,6 +430,20 @@ Function Get-AccessToken {
     $authResult         = $authContext.AcquireTokenAsync($Resource,$ClientCredential)
 
     return $authResult.Result
+}
+
+Function Get-AzureADConnected {
+    <#
+    
+        Determine if AzureAD is connected
+
+    #>
+    Try {
+        $r= Get-AzureADTenantDetail -ErrorAction:SilentlyContinue | Out-Null
+        Return $True
+    } Catch {
+        Return $False
+    }
 }
 
 Function Get-GraphToken {
@@ -604,7 +618,6 @@ Function Invoke-GraphTokenRolesCheck {
         Debug=$MissingRoles
     }
 }
-            
 
 Function Invoke-WinRMBasicCheck {
     <#
@@ -902,7 +915,9 @@ Function Install-ModuleFromGallery {
 
 Function Fix-Modules {
     <#
+
         Attempts to fix modules if $Remediate flag is specified
+    
     #>
     Param($Modules)
 
@@ -1293,9 +1308,11 @@ If($ModuleCheck) {
 
         # Don't continue to check connections, still modules with errors
         If($Modules_Error.Count -gt 0) {
-            $ConnectCheck = $False
+            Write-Important
 
             Write-Host "$(Get-Date) The module check has failed - run with -Remediate to fix the modules and re-run. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
+            Write-Host "$(Get-Date) The modules must be remediated before continuing. Contact your TAM / or engineer for further information if required. "
+            Exit
         }
     }
 }
@@ -1316,6 +1333,10 @@ If($ConnectCheck) {
 }
 
 If($GraphCheck) {
+
+    If((Get-AzureADConnected) -eq $False) {
+        $AADConnection = Connect-AzureAD 
+    }
 
     Write-Host "$(Get-Date) Checking Graph..."
 
