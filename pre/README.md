@@ -38,6 +38,12 @@ In order to run the pre-requisite script, you must have:
 
 4. During the execution of the script, please read all prompts and notices, and provide consent to the Azure AD application which is documented below.
 
+### Collection machine
+
+The script must be run from the machine that you will use to perform the collection as part of the engagement. Please consider the following:
+* The machine should not be a production server, as the pre-requisite script may cause a reboot during installation of modules.
+* You require to be logged on as a local administrator.
+
 ## Azure AD Application
 
 An Azure AD Application is required in order to perform API calls to Graph and SharePoint. Installation of this application is performed by the pre-requisite script, however, there are some things that you should be aware of:
