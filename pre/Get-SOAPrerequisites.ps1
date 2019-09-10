@@ -924,7 +924,7 @@ Function Fix-Modules {
     If(Get-IsAdministrator -eq $True) {
 
         # Administrator so can remediate
-        $OutdatedModules = $Modules | Where-Object {$_.InstalledVersion -ne $null -and $_.Updated -eq $False}
+        $OutdatedModules = $Modules | Where-Object {$_.InstalledVersion -ne $null -and $_.Updated -eq $False -and $_.Conflict -ne $True}
         $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True -and $_.Updated -eq $True}
         $MissingGalleryModules = $Modules | Where-Object {$_.InstalledVersion -eq $Null -and $_.GalleryVersion -ne $Null}
         $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
