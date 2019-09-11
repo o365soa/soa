@@ -115,12 +115,6 @@ If($GraphOnly) {
     $ModuleCheck = $False
 }
 
-If($Bypass -contains "Graph") {
-    $GraphCheck=$False
-} Else {
-    $GraphCheck=$True
-}
-
 # Final check list
 $CheckResults = @()
 
@@ -1005,24 +999,24 @@ Function Check-Modules {
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "SharePointPnPPowerShellOnline","Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Skype") {$RequiredModules += "SkypeOnlineConnector"}
 
-    $ModuleCheck = @()
+    $ModuleCheckResult = @()
 
     ForEach($m in $RequiredModules) {
-        $ModuleCheck += (Get-ModuleStatus -ModuleName $m)
+        $ModuleCheckResult += (Get-ModuleStatus -ModuleName $m)
     }
 
     ForEach($m in $ConflictModules) {
         $MInfo = (Get-ModuleStatus -ModuleName $m -ConflictModule)
         If($MInfo.Installed -eq $True) {
-            $ModuleCheck += $MInfo
+            $ModuleCheckResult += $MInfo
         }
     }
 
     If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
-        $ModuleCheck += (Get-ModuleStatus -ExtModule_Exchange)
+        $ModuleCheckResult += (Get-ModuleStatus -ExtModule_Exchange)
     }
 
-    Return $ModuleCheck
+    Return $ModuleCheckResult
 }
 
 Function Test-Connections {
@@ -1290,13 +1284,13 @@ While($True) {
 
 #>
 
-If($ModuleCheck) {
+If($ModuleCheck -eq $True) {
     Write-Host "$(Get-Date) Checking pre-requisites..."
 
-    $ModuleCheck = Check-Modules
+    $ModuleCheckResult = Check-Modules
 
-    $Modules_OK = @($ModuleCheck | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
-    $Modules_Error = @($ModuleCheck | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False -or $_.Conflict -eq $True})
+    $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
+    $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False -or $_.Conflict -eq $True})
 
     If($Modules_Error.Count -gt 0) {
         Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
@@ -1306,9 +1300,9 @@ If($ModuleCheck) {
             Fix-Modules $Modules_Error
 
             Write-Host "$(Get-Date) Post remediation pre-requisite check..."
-            $ModuleCheck = Check-Modules
-            $Modules_OK = @($ModuleCheck | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
-            $Modules_Error = @($ModuleCheck | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False})
+            $ModuleCheckResult = Check-Modules
+            $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
+            $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False})
         }
 
         # Don't continue to check connections, still modules with errors
@@ -1328,16 +1322,16 @@ If($ModuleCheck) {
 
 #>
 
-If($ConnectCheck) {
+If($ConnectCheck -eq $True) {
     # Proceed to testing connections
     
     $Connections = @(Test-Connections)
     
-        $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
-        $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $_.OtherErrors -ne $Null})
+    $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
+    $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $_.OtherErrors -ne $Null})
 }
 
-If($GraphCheck) {
+If($GraphCheck -eq $True) {
 
     If((Get-AzureADConnected) -eq $False) {
         $AADConnection = Connect-AzureAD 
@@ -1437,7 +1431,7 @@ $CheckResults += Invoke-WinRMBasicCheck
 
 Write-Host "$(Get-Date) Detailed Output"
 
-If($ModuleCheck) {
+If($ModuleCheck -eq $True) {
 
     Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
     $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,Updated
@@ -1460,7 +1454,7 @@ If($ModuleCheck) {
 
 }
 
-If($ConnectCheck) {
+If($ConnectCheck -eq $True) {
 
     Write-Host "$(Get-Date) Connections" -ForegroundColor Green
     $Connections_OK | Format-Table Name,Connected,TestCommand
@@ -1481,7 +1475,7 @@ If($ConnectCheck) {
 
 }
 
-If($GraphCheck) {
+If($GraphCheck -eq $True) {
 
     Write-Host "$(Get-Date) Graph checks" -ForegroundColor Green
 
