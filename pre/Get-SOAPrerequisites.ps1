@@ -287,7 +287,7 @@ Function Install-SkypeConnector {
                 $env:PSModulePath = [System.Environment]::GetEnvironmentVariable("PSModulePath","Machine")
             } Else {
                 Write-Error "Skype installer has finished, but it doesn't appear to have installed the Skype Module.."
-                $Wait = $MaxWait
+                break
             }
         }
 
