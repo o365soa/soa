@@ -861,6 +861,8 @@ Function Uninstall-OldModules {
                     # Determine if module is SharePoint module - which may need to be removed from path
                     If($Module.Name -eq "Microsoft.Online.SharePoint.PowerShell") {
                         Remove-FromPSModulePath "C:\Program Files\SharePoint Online Management Shell\"
+                    } ElseIf($Module.Name -eq "SharePointPnPPowerShellOnline") {
+                        Remove-FromPSModulePath "$env:LOCALAPPDATA\Apps\SharePointPnPPowerShellOnline"
                     } Else {
                         Write-Error "Failed to uninstall old module $($Module.Name)"
                     }
