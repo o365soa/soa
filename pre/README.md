@@ -52,7 +52,8 @@ The scope of this application is limited to the following:
 * SecurityEvents.Read.All
 * IdentityRiskyUser.Read.All
 * IdentityRiskEvent.Read.All
-* DeviceManagementConfiguration.Read.All
+* DeviceManagementConfiguration.Read.
+* Sites.Read.All
 
 ### Azure AD Application Security
 

@@ -58,29 +58,39 @@ Param (
 
     Required Graph Permissions
 
-    Both the ID and the Name is required.
-    - ID is used during the installation of the permissions
+    ID, Name and Resource are required
+    - ID is the scope's unique GUID
     - Name is used during the token check (to see we are actually getting these scopes assigned to us)
+    - Resource is the application ID for the API we are using, usually this is "00000003-0000-0000-c000-000000000000" which is for Graph
 
 #>
 
-$GraphRoles = @()
+$AppRoles = @()
 
-$GraphRoles += New-Object -TypeName PSObject -Property @{
+$AppRoles += New-Object -TypeName PSObject -Property @{
     ID="bf394140-e372-4bf9-a898-299cfc7564e5"
-    Name="SecurityEvents.Read.All"    
+    Name="SecurityEvents.Read.All"
+    Resource="00000003-0000-0000-c000-000000000000" # Graph    
 }
-$GraphRoles += New-Object -TypeName PSObject -Property @{
+$AppRoles += New-Object -TypeName PSObject -Property @{
     ID="dc5007c0-2d7d-4c42-879c-2dab87571379"
     Name="IdentityRiskyUser.Read.All"
+    Resource="00000003-0000-0000-c000-000000000000" # Graph
 }
-$GraphRoles += New-Object -TypeName PSObject -Property @{
+$AppRoles += New-Object -TypeName PSObject -Property @{
     ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
     Name="IdentityRiskEvent.Read.All"
+    Resource="00000003-0000-0000-c000-000000000000" # Graph
 }
-$GraphRoles += New-Object -TypeName PSObject -Property @{
+$AppRoles += New-Object -TypeName PSObject -Property @{
     ID="dc377aa6-52d8-4e23-b271-2a7ae04cedf3"
     Name="DeviceManagementConfiguration.Read.All"
+    Resource="00000003-0000-0000-c000-000000000000" # Graph
+}
+$AppRoles += New-Object -TypeName PSObject -Property @{
+    ID="d13f72ca-a275-4b96-b789-48ebcc4da984"
+    Name="Sites.Read.All"
+    Resource="00000003-0000-0ff1-ce00-000000000000"
 }
 
 <#
@@ -361,18 +371,18 @@ Function Install-ExchangeModule {
 
 }
 
-Function Reset-GraphSecret {
+Function Reset-AppSecret {
     <#
     
         This function creates a new secret for the application
     
     #>
     Param (
-        $GraphApp
+        $App
     )
 
     # Provision a short lived credential +48 hrs.
-    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $GraphApp.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "Prereq on $(Get-Date -Format "dd-MMM-yyyy")"
+    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "Prereq on $(Get-Date -Format "dd-MMM-yyyy")"
         
     Start-Sleep 30
 
@@ -524,16 +534,36 @@ Function Set-GraphPermission {
 
     Write-Host "$(Get-Date) Setting Graph Permissions for Application"
 
-    $GraphResource = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
-    $GraphResource.ResourceAppId = "00000003-0000-0000-c000-000000000000"
+    $RequiredResources = @()
 
-    ForEach($Role in $Roles) {
-        $Perm = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList $Role.ID,"Role"
-        $GraphResource.ResourceAccess += $Perm
+    <#
+    
+        The following creates a Required Resources array. The array consists of RequiredResourceAccess objects.
+        There is one RequiredResourceAccess object for every resource, for instance Graph is a resource.
+        In the RequiredResourceAccess object is an array of scopes that are required for that resource.
+    
+    #>
+    
+    ForEach($ResourceRolesGrouping in ($Roles | Group-Object Resource)) 
+    {
+
+        # Define the resource
+        $Resource = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
+        $Resource.ResourceAppId = $ResourceRolesGrouping.Name
+
+        # Add the scopes
+        ForEach($Role in $($ResourceRolesGrouping.Group)) {
+            $Perm = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList $Role.ID,"Role"
+            $Resource.ResourceAccess += $Perm
+        }
+
+        # Add to the list of required access
+        $RequiredResources += $Resource
+
     }
-
+    
     Try {
-        Set-AzureADApplication -ObjectId $App.ObjectId -RequiredResourceAccess $GraphResource
+        Set-AzureADApplication -ObjectId $App.ObjectId -RequiredResourceAccess $RequiredResources
         Return $True
     } Catch {
         Return $False
@@ -541,7 +571,7 @@ Function Set-GraphPermission {
 
 }
 
-Function Invoke-GraphPermissionCheck {
+Function Invoke-AppPermissionCheck {
     <#
         Check the permissions are set correctly on the Graph application
     #>
@@ -552,10 +582,11 @@ Function Invoke-GraphPermissionCheck {
 
     $Provisioned = $True
 
-    $RequiredResources = @(($app.RequiredResourceAccess | Where-Object {$_.ResourceAppId -eq "00000003-0000-0000-c000-000000000000"}).ResourceAccess).Id
-
     # Go through each role this app should have, and check if this is in the RequiredResources field for the app
     ForEach($Role in $Roles) {
+
+        $RequiredResources = @(($app.RequiredResourceAccess | Where-Object {$_.ResourceAppId -eq $Role.Resource}).ResourceAccess).Id
+
         If($RequiredResources -notcontains $Role.ID) {
             # Role is missing
             $Provisioned = $False
@@ -569,7 +600,7 @@ Function Invoke-GraphPermissionCheck {
 
 }
 
-Function Invoke-GraphTokenRolesCheck {
+Function Invoke-AppTokenRolesCheck {
     <#
     
         This function checks for the presence of the right roles in the token
@@ -577,7 +608,7 @@ Function Invoke-GraphTokenRolesCheck {
 
     #>
     Param (
-        $GraphApp,
+        $App,
         $Roles,
         $Secret,
         $TenantDomain
@@ -596,8 +627,8 @@ Function Invoke-GraphTokenRolesCheck {
     $tokenArray = [System.Text.Encoding]::ASCII.GetString($tokenByteArray)
     $tokobj = $tokenArray | ConvertFrom-Json
 
-    # Check the roles are in the token
-    ForEach($Role in $Roles) {
+    # Check the roles are in the token, only check Graph at this stage.
+    ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000"})) {
         If($tokobj.Roles -notcontains $Role.Name) {
             $MissingRoles += $Role
         }
@@ -679,7 +710,7 @@ Function Install-GraphApp {
     Param (
         $Roles
     )
-    
+
     # Create the Graph Application
     $GraphApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
     
@@ -1274,6 +1305,7 @@ While($True) {
     if($rhInput -eq "n") {
         exit
     } elseif($rhInput -eq "y") {
+        Write-Host ""
         break;
     }
 }
@@ -1353,7 +1385,7 @@ If($GraphCheck -eq $True) {
 
             Write-Host "$(Get-Date) Installing Graph Application..."
 
-            $GraphApp = Install-GraphApp -Roles $GraphRoles
+            $GraphApp = Install-GraphApp -Roles $AppRoles
 
         }
     }
@@ -1367,22 +1399,22 @@ If($GraphCheck -eq $True) {
         }
 
         # Reset secret
-        $clientsecret = Reset-GraphSecret -GraphApp $GraphApp
+        $clientsecret = Reset-AppSecret -App $GraphApp
 
         # Perform check for Graph Permission
         Write-Host "$(Get-Date) Performing Application Permission Check..."
-        $Result = Invoke-GraphPermissionCheck -App $GraphApp -Roles $GraphRoles
+        $Result = Invoke-AppPermissionCheck -App $GraphApp -Roles $AppRoles
             
         # Graph Permission - Perform remediation if specified
             If($Result.Pass -eq $False -and $Remediate) {
                 # Set up the correct Graph Permissions
                 Write-Host "$(Get-Date) Remediating Application Permissions..."
-                If((Set-GraphPermission -App $GraphApp -Roles $GraphRoles) -eq $True) {
+                If((Set-GraphPermission -App $GraphApp -Roles $AppRoles) -eq $True) {
                     # Requst admin consent
                     If((Perform-Consent -App $GraphApp) -eq $True) {
                         # Sleep to prevent race
                         Start-Sleep 60
-                        $Result = Invoke-GraphPermissionCheck -App $GraphApp -Roles $GraphRoles
+                        $Result = Invoke-AppPermissionCheck -App $GraphApp -Roles $AppRoles
                     }
                 }
             }
@@ -1391,7 +1423,7 @@ If($GraphCheck -eq $True) {
 
             # Perform check for consent
             Write-Host "$(Get-Date) Performing token check..."
-            $Result = Invoke-GraphTokenRolesCheck -GraphApp $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -Roles $GraphRoles
+            $Result = Invoke-AppTokenRolesCheck -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -Roles $AppRoles
             
             If($Result.Pass -eq $False -and $Remediate) {
                 Write-Host "$(Get-Date) Missing roles in token, possible that consent was not completed..."
@@ -1399,7 +1431,7 @@ If($GraphCheck -eq $True) {
                     If((Perform-Consent -App $GraphApp) -eq $True) {
                         # Sleep to prevent race, then re-perform check
                         Start-Sleep 60
-                        $Result = Invoke-GraphTokenRolesCheck -GraphApp $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -Roles $GraphRoles
+                        $Result = Invoke-AppTokenRolesCheck -GraphApp $App -Secret $clientsecret -TenantDomain $tenantdomain -Roles $AppRoles
                     }                
             }
 
