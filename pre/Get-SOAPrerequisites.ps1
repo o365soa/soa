@@ -1051,6 +1051,9 @@ Function Check-Modules {
 }
 
 Function Test-Connections {
+    Param(
+        $RPSProxySetting
+    )
 
     $Connections = @()
 
@@ -1138,7 +1141,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors | Out-Null
+        Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
 
         If((Get-PSSession | Where-Object {$_.ComputerName -like "*protection.outlook.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
@@ -1170,7 +1173,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        Connect-EXOPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors | Out-Null
+        Connect-EXOPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
 
         If((Get-PSSession | Where-Object {$_.ComputerName -eq "outlook.office365.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
@@ -1310,6 +1313,23 @@ While($True) {
     }
 }
 
+<#
+
+    Proxy requirement auto-detection
+
+#>
+
+    $ConnectionTest = Test-NetConnection -Port 443 -ComputerName outlook.office365.com -WarningAction:SilentlyContinue -ErrorAction:SilentlyContinue
+
+    If($ConnectionTest.TcpTestSucceeded -eq $False) 
+    {
+        Write-Host "Proxy requirement detected."
+        $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
+    } Else {
+        $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
+    }
+
+
 <# 
 
     Perform the module check
@@ -1317,6 +1337,26 @@ While($True) {
 #>
 
 If($ModuleCheck -eq $True) {
+
+    # Determine if the nuget provider is available
+
+    If(!(Get-PackageProvider -Name nuget -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
+        If($Remediate) {
+            Install-PackageProvider -Name NuGet -Force | Out-Null
+        } Else {
+            Write-Error "Proceeding requires the NuGet package manager to be installed. Run this script with -Remediate in order to install the package manager."
+        }
+    }
+
+    # Determine if PowerShell gallery is installed
+    If(!(Get-PSRepository -Name PSGallery -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
+        If($Remediate) {
+            Register-PSRepository -Default -InstallationPolicy Trusted | Out-Null
+        } Else {
+            Write-Error "Proceeding requires the PowerShell gallery repository. Run this script with -Remediate in order to configure the repository."
+        }
+    }
+
     Write-Host "$(Get-Date) Checking pre-requisites..."
 
     $ModuleCheckResult = Check-Modules
@@ -1357,7 +1397,7 @@ If($ModuleCheck -eq $True) {
 If($ConnectCheck -eq $True) {
     # Proceed to testing connections
     
-    $Connections = @(Test-Connections)
+    $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting)
     
     $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
     $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $_.OtherErrors -ne $Null})
