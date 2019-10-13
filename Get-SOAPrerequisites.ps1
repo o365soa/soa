@@ -236,7 +236,7 @@ Function Install-SkypeConnector {
 
     Do {
         $Wait++;
-        Sleep 5
+        Start-Sleep 5
 
         $p = Get-Process | Where-Object {$_.Name -eq "SkypeOnlinePowerShell"}
 
@@ -348,7 +348,7 @@ Function Reset-AppSecret {
     Return $clientsecret.Value
 }
 
-Function Load-ADAL {
+Function Invoke-LoadAdal {
     <#
     
         Finds a suitable ADAL library from AzureAD Preview and uses that
@@ -357,8 +357,8 @@ Function Load-ADAL {
     #>
     $AadModule = Get-Module -Name "AzureADPreview" -ListAvailable
 
-    $Latest_Version = ($AadModule | select version | Sort-Object)[-1]
-    $aadModule      = $AadModule | ? { $_.version -eq $Latest_Version.version }
+    $Latest_Version = ($AadModule | Select-Object version | Sort-Object)[-1]
+    $aadModule      = $AadModule | Where-Object { $_.version -eq $Latest_Version.version }
     $adal           = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.dll"
     $adalforms      = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.Platform.dll"
 
@@ -377,13 +377,12 @@ Function Get-AccessToken {
         $ClientID,
         $Secret,
         $Resource,
-        $CredPrompt,
         [Switch]$ClearTokenCache # useful if we need to get newly added scopes
     )
 
     if (!$CredPrompt){$CredPrompt = 'Auto'}
 
-    Load-ADAL
+    Invoke-LoadAdal
 
     $authority          = "https://login.microsoftonline.com/$TenantName"
     $authContext        = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority   
@@ -405,7 +404,7 @@ Function Get-AzureADConnected {
 
     #>
     Try {
-        $r= Get-AzureADTenantDetail -ErrorAction:SilentlyContinue | Out-Null
+        Get-AzureADTenantDetail -ErrorAction:SilentlyContinue | Out-Null
         Return $True
     } Catch {
         Return $False
@@ -454,7 +453,6 @@ Function Invoke-GraphTest {
     )
 
     $Success = $False
-    $AuthError = $null
     $RunError = $Null
 
     Write-Host "$(Get-Date) Testing Graph..."
@@ -629,7 +627,7 @@ Function Invoke-WinRMBasicCheck {
 
 }
 
-Function Perform-Consent {
+Function Invoke-Consent {
     <#
     
         Perform consent for application
@@ -652,7 +650,7 @@ Function Perform-Consent {
     Write-Host ""
     Write-Host $Location
     Write-Host ""
-    Sleep 20
+    Start-Sleep 20
     Start-Process $Location
 
     While($(Read-Host -Prompt "Type 'yes' when you have completed consent") -ne "yes") {}
@@ -677,7 +675,7 @@ Function Install-GraphApp {
     Set-GraphPermission -App $GraphApp -Roles $Roles
 
     # Requst admin consent
-    Perform-Consent -App $GraphApp
+    Invoke-Consent -App $GraphApp
 
     # Return the newly created graph application
     Return (Get-AzureADApplication -ObjectId $GraphApp.ObjectId)
@@ -711,7 +709,7 @@ Function Get-ModuleStatus {
 
         # For the Exchange Module, which is not in the Galary
         If($ExtModule_Exchange) {
-            $EXOLoad = Load-EXOPSModule
+            $EXOLoad = Invoke-EXOPSModule
             If($EXOLoad -eq $True) {
                 Return New-Object -TypeName PSObject -Property @{
                     Module="Exchange Online"
@@ -780,7 +778,7 @@ Function Get-ModuleStatus {
     
 }
 
-Function Load-EXOPSModule {
+Function Invoke-EXOPSModule {
     <#
     
         Attempts to load the Exchange Online Module
@@ -915,7 +913,7 @@ Function Install-ModuleFromGallery {
     }
 }
 
-Function Fix-Modules {
+Function Invoke-ModuleFix {
     <#
 
         Attempts to fix modules if $Remediate flag is specified
@@ -926,9 +924,9 @@ Function Fix-Modules {
     If(Get-IsAdministrator -eq $True) {
 
         # Administrator so can remediate
-        $OutdatedModules = $Modules | Where-Object {$_.InstalledVersion -ne $null -and $_.Updated -eq $False -and $_.Conflict -ne $True}
+        $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.Updated -eq $False -and $_.Conflict -ne $True}
         $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True -and $_.Updated -eq $True}
-        $MissingGalleryModules = $Modules | Where-Object {$_.InstalledVersion -eq $Null -and $_.GalleryVersion -ne $Null}
+        $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $Null -ne $_.GalleryVersion }
         $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
 
         # Determine status of PSGallery repository
@@ -1028,7 +1026,7 @@ Function Get-ManualModules
 
 }
 
-Function Check-Modules {
+Function Invoke-ModuleCheck {
 
     $RequiredModules = @()
     
@@ -1124,7 +1122,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2.."
-        $AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError
+        Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null
 
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
@@ -1158,10 +1156,8 @@ Function Test-Connections {
 
         # Run test command
         If(Get-Command "Get-ProtectionAlert") {
-            $Connected=$True
             $Command = $True
         } Else {
-            $Connected = $False
             $Command = $False
         }
 
@@ -1196,7 +1192,6 @@ Function Test-Connections {
                 $Command = $False
             }
         } Else {
-            $Connected=$False
             $Command = $False
         }
 
@@ -1263,7 +1258,6 @@ Function Test-Connections {
                 $Command = $False
             }
         } Else {
-            $Connected=$False
             $Command = $False
         }
 
@@ -1403,7 +1397,7 @@ If($ModuleCheck -eq $True) {
 
     Write-Host "$(Get-Date) Checking modules..."
 
-    $ModuleCheckResult = Check-Modules
+    $ModuleCheckResult = Invoke-ModuleCheck
 
     $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
     $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False -or $_.Conflict -eq $True})
@@ -1413,10 +1407,10 @@ If($ModuleCheck -eq $True) {
         $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
 
         If($Remediate) {
-            Fix-Modules $Modules_Error
+            Invoke-ModuleFix $Modules_Error
 
             Write-Host "$(Get-Date) Post remediation pre-requisite check..."
-            $ModuleCheckResult = Check-Modules
+            $ModuleCheckResult = Invoke-ModuleCheck
             $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
             $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False})
         }
@@ -1450,7 +1444,7 @@ If($ConnectCheck -eq $True) {
 If($GraphCheck -eq $True) {
 
     If((Get-AzureADConnected) -eq $False) {
-        $AADConnection = Connect-AzureAD 
+        Connect-AzureAD | Out-Null
     }
 
     Write-Host "$(Get-Date) Checking Graph..."
@@ -1495,7 +1489,7 @@ If($GraphCheck -eq $True) {
                 Write-Host "$(Get-Date) Remediating Application Permissions..."
                 If((Set-GraphPermission -App $GraphApp -Roles $AppRoles) -eq $True) {
                     # Requst admin consent
-                    If((Perform-Consent -App $GraphApp) -eq $True) {
+                    If((Invoke-Consent -App $GraphApp) -eq $True) {
                         # Sleep to prevent race
                         Start-Sleep 60
                         $Result = Invoke-AppPermissionCheck -App $GraphApp -Roles $AppRoles
@@ -1512,7 +1506,7 @@ If($GraphCheck -eq $True) {
             If($Result.Pass -eq $False -and $Remediate) {
                 Write-Host "$(Get-Date) Missing roles in token, possible that consent was not completed..."
                     # Requst admin consent
-                    If((Perform-Consent -App $GraphApp) -eq $True) {
+                    If((Invoke-Consent -App $GraphApp) -eq $True) {
                         # Sleep to prevent race, then re-perform check
                         Start-Sleep 60
                         $Result = Invoke-AppTokenRolesCheck -GraphApp $App -Secret $clientsecret -TenantDomain $tenantdomain -Roles $AppRoles
