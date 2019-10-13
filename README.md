@@ -44,6 +44,12 @@ The script must be run from the machine that you will use to perform the collect
 * The machine should not be a production server, as the pre-requisite script may cause a reboot during installation of modules.
 * You require to be logged on as a local administrator.
 
+### Requiring a proxy
+
+We recommend that traffic through to Office 365 bypasses proxy infrastructure, and this script also needs connectivity to the PowerShell gallery as well.
+
+If a proxy is required, try running with -UseProxy
+
 ## Azure AD Application
 
 An Azure AD Application is required in order to perform API calls to Graph and SharePoint. Installation of this application is performed by the pre-requisite script, however, there are some things that you should be aware of:
