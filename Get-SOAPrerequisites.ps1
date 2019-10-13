@@ -42,6 +42,7 @@
 [CmdletBinding(DefaultParametersetname="Default")]
 Param (
     [Switch]$Remediate,
+    [Switch]$UseProxy,
     [Parameter(ParameterSetName='Default')]
         $Bypass=@(),
     [Parameter(ParameterSetName='ConnectOnly')]
@@ -297,11 +298,12 @@ Function Install-ExchangeModule {
     $psids = (get-process |where-object {$_.name -eq 'powershell'}).id
 
     While($Installing -eq $True) {
-        Sleep 1
+        Start-Sleep 1
         $dfsvcTitle = (Get-Process | Where-Object {$_.Name -eq "dfsvc"}).Mainwindowtitle
 
         if($dfsvcTitle -eq "Application Install - Security Warning") {
             Write-Host "Waiting for your approval, change to the window labelled '$dfsvcTitle'"
+            Start-Sleep 10
         }
 
         if($dfsvcTitle -like "*Installing Microsoft Exchange*") {
@@ -880,6 +882,24 @@ Function Remove-FromPSModulePath {
 
 }
 
+Function Get-PSModulePath {
+    <#
+    
+    Gets PSModulePath using a like condition.
+    This is used for determining if a module is manually installed, and can be used for removing that manual installation.
+
+    #>
+    Param (
+        $LikeCondition
+    )
+
+    $PathArray = (Get-ChildItem Env:PSModulePath).Value.Split(";")
+    $Return = @($PathArray | Where-Object {$_ -like $LikeCondition})
+
+    Return $Return
+
+}
+
 Function Install-ModuleFromGallery {
     <#
     
@@ -1276,16 +1296,17 @@ While($True) {
 
 #>
 
-    $ConnectionTest = Test-NetConnection -Port 443 -ComputerName outlook.office365.com -WarningAction:SilentlyContinue -ErrorAction:SilentlyContinue
-
-    If($ConnectionTest.TcpTestSucceeded -eq $False) 
-    {
-        Write-Host "Proxy requirement detected."
-        $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
-    } Else {
-        $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
-    }
-
+If($UseProxy)
+{
+    Write-Host "Script was ran with UseProxy flag. An attempt will be made to connect through the proxy infrastructure where possible."
+    $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
+} 
+Else 
+{
+    Write-Host "Proxy requirement was not specified with -UseProxy. Connection will be attempted direct."
+    Write-Host ""
+    $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
+}
 
 <# 
 
@@ -1314,7 +1335,7 @@ If($ModuleCheck -eq $True) {
         }
     }
 
-    Write-Host "$(Get-Date) Checking pre-requisites..."
+    Write-Host "$(Get-Date) Checking modules..."
 
     $ModuleCheckResult = Check-Modules
 
