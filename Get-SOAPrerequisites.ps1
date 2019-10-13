@@ -209,49 +209,6 @@ function Get-SharePointAdminUrl
     return $url
 }
 
-function Get-SharePointDefaultUrl
-{
-    <#
-    
-        Used to determine what the SharePoint URL is during connection tests
-    
-    #>
-
-    $tenantName = Get-SPOTenantName
-
-    $url = "https://" + $tenantName + ".sharepoint.com"
-    return $url
-}
-
-function Get-PnPConnection
-{
-    <#
-    
-        Establishes a PNP Connection to SharePoint
-    
-    #>
-    Param(
-        [Parameter(Mandatory=$True)]
-        [string]$Url
-    )
-    
-    if(!$Global:IsSPConnected)
-    {
-        Connect-PnPOnline -Url $Url -SPOManagementShell -ClearTokenCache
-        $Global:IsSPConnected = $true
-    }
-    else {
-        try {
-            Connect-PnPOnline -Url $Url -SPOManagementShell -ErrorAction:SilentlyContinue
-        }
-        catch {
-            # Supressing the exception
-            Write-Verbose "Call to Connect-PnPOnline failed"
-        }  
-    }
-   
-}
-
 Function Install-SkypeConnector {
     <#
     
