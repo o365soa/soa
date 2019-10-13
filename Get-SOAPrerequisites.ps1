@@ -842,14 +842,7 @@ Function Uninstall-OldModules {
                 Try {
                     Uninstall-Module $Module.Name -RequiredVersion $($Module.Version) -ErrorAction:Stop
                 } Catch {
-                    # Determine if module is SharePoint module - which may need to be removed from path
-                    If($Module.Name -eq "Microsoft.Online.SharePoint.PowerShell") {
-                        Remove-FromPSModulePath "C:\Program Files\SharePoint Online Management Shell\"
-                    } ElseIf($Module.Name -eq "SharePointPnPPowerShellOnline") {
-                        Remove-FromPSModulePath "$env:LOCALAPPDATA\Apps\SharePointPnPPowerShellOnline"
-                    } Else {
-                        Write-Error "Failed to uninstall old module $($Module.Name)"
-                    }
+                    # Some code needs to be placed here to catch possible error.
                 }
                 
             }
@@ -876,8 +869,10 @@ Function Remove-FromPSModulePath {
         Write-Host "$(Get-Date) Removing $Folder from PSModulePath"
         $NewPathArray = $PathArray | Where-Object {$_ -ne $Folder}
         Set-Item Env:PSModulePath -Value ($NewPathArray -Join ";")
+        Return $True
     } Else {
         Write-Error "Attempted to remove $Folder from PSModulePath, however, there is no entry. PSModulePath is $((Get-ChildItem Env:PSModulePath).Value)"
+        Return $False
     }
 
 }
@@ -992,6 +987,45 @@ Function Fix-Modules {
         Write-Error "Load PowerShell as administrator in order to fix modules"
         Return $False
     }
+}
+
+Function Get-ManualModules
+{
+    <#
+    
+    Determines if there are any manual module installs as opposed to PowerShell gallery installs
+    When running with -Remediate these are attempted to be removed from the PSModulePath
+    
+    #>
+    Param(
+        [Switch]$Remediate
+    )
+
+    $Return = @()
+
+    $ModuleChecks = @("SharePoint Online Management Shell","SharePointPnPPowerShellOnline")
+
+    ForEach($ModuleCheck in $ModuleChecks)
+    {
+        $RemediateSuccess = $False
+
+        $Result = Get-PSModulePath -LikeCondition "*$($ModuleCheck)*"
+
+        If($Remediate) 
+        {
+            ForEach ($r in $Result)
+            {
+                $RemediateSuccess = Remove-FromPSModulePath -Folder $r
+            }
+        }
+
+        If($Result.Count -gt 0 -and $RemediateSuccess -eq $False) {
+            $Return += $ModuleCheck
+        }
+    }
+
+    Return $Return
+
 }
 
 Function Check-Modules {
@@ -1332,6 +1366,38 @@ If($ModuleCheck -eq $True) {
             Register-PSRepository -Default -InstallationPolicy Trusted | Out-Null
         } Else {
             Write-Error "Proceeding requires the PowerShell gallery repository. Run this script with -Remediate in order to configure the repository."
+        }
+    }
+
+    Write-Host "$(Get-Date) Checking manual module installations..."
+    $ManualInstalls = Get-ManualModules
+
+    If($ManualInstalls -gt 0)
+    {
+
+        Write-Host "$(Get-Date) Modules manually installed that need to be removed"
+        $ManualInstalls
+
+        If($Remediate) 
+        {
+            # Fix manual installs
+            $ManualInstalls = Get-ManualModules -Remediate
+        }
+
+        If($ManualInstalls.Count -gt 0)
+        {
+            Write-Important
+
+            Write-Host "$(Get-Date) The module check has failed as some modules have been manually installed. These will conflict with newer, required modules from the PowerShell Gallery." -ForegroundColor Red
+            If($Remediate) 
+            {
+                Write-Host "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. Removal using Add/Remove programs is necessary." -ForegroundColor Red
+            } 
+            Else 
+            {
+                Write-Host "$(Get-Date) Run this script as administrator with -Remediate to attempt to remove, or manually uninstall them from Add/Remove programs." -ForegroundColor Red
+            }
+            Exit
         }
     }
 
