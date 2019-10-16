@@ -1754,5 +1754,5 @@ Function Install-SOAPrerequisites
 
     Write-Host "$(Get-Date) Output sent to SOA-PreCheck.json which can be sent to the engineer running the assessment"
 
-    Stop-Transcript "$SOADirectory\$TranscriptName"
+    Stop-Transcript
 }
