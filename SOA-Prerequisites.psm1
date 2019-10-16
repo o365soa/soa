@@ -39,96 +39,6 @@
 
 #>
 
-[CmdletBinding(DefaultParametersetname="Default")]
-Param (
-    [Switch]$Remediate,
-    [Switch]$UseProxy,
-    [Parameter(ParameterSetName='Default')]
-        $Bypass=@(),
-    [Parameter(ParameterSetName='ConnectOnly')]
-        [Switch]$ConnectOnly,
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [Switch]$ModulesOnly,
-    [Parameter(ParameterSetName='GraphOnly')]
-        [Switch]$GraphOnly
-)
-
-# Variable setting
-
-<#
-
-    Required Graph Permissions
-
-    ID, Name and Resource are required
-    - ID is the scope's unique GUID
-    - Name is used during the token check (to see we are actually getting these scopes assigned to us)
-    - Resource is the application ID for the API we are using, usually this is "00000003-0000-0000-c000-000000000000" which is for Graph
-
-#>
-
-$AppRoles = @()
-
-$AppRoles += New-Object -TypeName PSObject -Property @{
-    ID="bf394140-e372-4bf9-a898-299cfc7564e5"
-    Name="SecurityEvents.Read.All"
-    Resource="00000003-0000-0000-c000-000000000000" # Graph    
-}
-$AppRoles += New-Object -TypeName PSObject -Property @{
-    ID="dc5007c0-2d7d-4c42-879c-2dab87571379"
-    Name="IdentityRiskyUser.Read.All"
-    Resource="00000003-0000-0000-c000-000000000000" # Graph
-}
-$AppRoles += New-Object -TypeName PSObject -Property @{
-    ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
-    Name="IdentityRiskEvent.Read.All"
-    Resource="00000003-0000-0000-c000-000000000000" # Graph
-}
-$AppRoles += New-Object -TypeName PSObject -Property @{
-    ID="dc377aa6-52d8-4e23-b271-2a7ae04cedf3"
-    Name="DeviceManagementConfiguration.Read.All"
-    Resource="00000003-0000-0000-c000-000000000000" # Graph
-}
-$AppRoles += New-Object -TypeName PSObject -Property @{
-    ID="d13f72ca-a275-4b96-b789-48ebcc4da984"
-    Name="Sites.Read.All"
-    Resource="00000003-0000-0ff1-ce00-000000000000"
-}
-
-<#
-
-    Variable setting
-
-#>
-
-# Default run
-$ConnectCheck = $True
-$ModuleCheck = $True
-$GraphCheck = $True
-
-# Change based on ModuleOnly flag
-If($ModulesOnly) {
-    $ConnectCheck = $False
-    $ModuleCheck = $True
-    $GraphCheck = $False
-}
-
-# Change based on ConnectOnly flag
-If($ConnectOnly) {
-    $ConnectCheck = $True
-    $GraphCheck = $True
-    $ModuleCheck = $False
-}
-
-# Change based on GraphOnly flag
-If($GraphOnly) {
-    $ConnectCheck = $False
-    $GraphCheck = $True
-    $ModuleCheck = $False
-}
-
-# Final check list
-$CheckResults = @()
-
 Function Get-IsAdministrator {
     <#
         Determine if the script is running in the context of an administrator or not
@@ -146,18 +56,6 @@ Function Get-PowerShellCount
 
     $Processes = Get-Process -Name PowerShell
     Return $Processes.Count
-}
-
-# Check administrator for remediate flag
-If($Remediate) {
-    If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True) {
-        Write-Error "PowerShell must be run as Administrator in order for -Remediate flag"
-        exit
-    }
-    If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True) {
-        Write-Error "There are multiple PowerShell windows open and the -Remediate flag has been used. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell modules, and start with a clean PowerShell window running as administrator."
-        Exit
-    }
 }
 
 Function Write-Important {
@@ -181,6 +79,26 @@ function New-TemporaryDirectory {
     [string] $name = [System.Guid]::NewGuid()
     $r = New-Item -ItemType Directory -Path (Join-Path $parent $name)
     Return $r.FullName
+}
+
+function Get-SOADirectory
+{
+    <#
+        Gets or creates the SOA directory in AppData
+    #>
+
+    $Directory = "$($env:LOCALAPPDATA)\Microsoft\SOA"
+
+    If(Test-Path $Directory) 
+    {
+        Return $Directory
+    }
+    else 
+    {
+        mkdir $Directory | out-null
+        Return $Directory
+    }
+
 }
 
 function Get-SPOTenantName
@@ -220,13 +138,24 @@ Function Install-SkypeConnector {
     Write-Host "$(Get-Date) Installing Skype Online Connector"
 
     $SkypeDownload = "https://download.microsoft.com/download/2/0/5/2050B39B-4DA5-48E0-B768-583533B42C3B/SkypeOnlinePowerShell.Exe"
+    $VCDownload = "https://aka.ms/vs/16/release/vc_redist.x64.exe"
 
     $TempPath = New-TemporaryDirectory
 
+    # Download Visual C Runtime
+    Write-Host "$(Get-Date) Downloading Visual C Runtimes"
+    Invoke-WebRequest -Uri $VCDownload -OutFile "$TempPath\VC_redist.x64.exe"
+#
     # Download Skype Connector
+    Write-Host "$(Get-Date) Downloading Skype Online Installer"
     Invoke-WebRequest -Uri $SkypeDownload -OutFile "$TempPath\SkypeOnlinePowerShell.Exe"
 
+    # Attempt to install Visual C Runtime
+    Write-Host "$(Get-Date) Running Visual C Runtime Installation"
+    Start-Process -FilePath "$TempPath\VC_redist.x64.exe" -ArgumentList "/passive" -Wait -Passthru | Out-Null
+
     # Attempt to install
+    Write-Host "$(Get-Date) Running Skype Online Installation"
     & "$TempPath\SkypeOnlinePowerShell.Exe" /install /passive
 
     # Wait for task to finish
@@ -382,8 +311,6 @@ Function Get-AccessToken {
 
     if (!$CredPrompt){$CredPrompt = 'Auto'}
 
-    Invoke-LoadAdal
-
     $authority          = "https://login.microsoftonline.com/$TenantName"
     $authContext        = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority   
     
@@ -486,12 +413,15 @@ Function Set-GraphPermission {
     #>
     Param(
         $Roles,
-        $App
+        $App,
+        $PerformConsent=$False
     )
 
     Write-Host "$(Get-Date) Setting Graph Permissions for Application"
 
     $RequiredResources = @()
+    $PermissionSet = $False
+    $ConsentPerformed = $False
 
     <#
     
@@ -521,8 +451,28 @@ Function Set-GraphPermission {
     
     Try {
         Set-AzureADApplication -ObjectId $App.ObjectId -RequiredResourceAccess $RequiredResources
-        Return $True
+        $PermissionSet = $True
     } Catch {
+        $PermissionSet = $False
+    }
+
+    If($PerformConsent -eq $True)
+    {
+        If((Invoke-Consent -App $GraphApp) -eq $True) {
+            $ConsentPerformed = $True
+        }
+    }
+
+    If($PermissionSet -eq $True -and $PerformConsent -eq $True -and $ConsentPerformed -eq $True) 
+    {
+        Return $True
+    } 
+    ElseIf ($PermissionSet -eq $True -and $PerformConsent -eq $False) 
+    {
+        Return $True
+    } 
+    Else
+    {
         Return $False
     }
 
@@ -533,21 +483,46 @@ Function Invoke-AppPermissionCheck {
         Check the permissions are set correctly on the Graph application
     #>
     Param(
-        $Roles,
         $App
     )
 
     $Provisioned = $True
+    
+    $Roles = Get-RequiredAppPermissions
 
-    # Go through each role this app should have, and check if this is in the RequiredResources field for the app
-    ForEach($Role in $Roles) {
+    # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
+    $MaxTime = 300
+    $SleepTime = 10
+    $Counter = 0
 
-        $RequiredResources = @(($app.RequiredResourceAccess | Where-Object {$_.ResourceAppId -eq $Role.Resource}).ResourceAccess).Id
+    While($Counter -lt $MaxTime)
+    {
 
-        If($RequiredResources -notcontains $Role.ID) {
-            # Role is missing
-            $Provisioned = $False
+        # Refresh roles from AAD
+        $App = Get-AzureADApplication -ObjectId $App.ObjectId
+
+        # Go through each role this app should have, and check if this is in the RequiredResources field for the app
+        ForEach($Role in $Roles) {
+
+            $RequiredResources = @(($app.RequiredResourceAccess | Where-Object {$_.ResourceAppId -eq $Role.Resource}).ResourceAccess).Id
+
+            If($RequiredResources -notcontains $Role.ID) {
+                # Role is missing
+                $Provisioned = $False
+            }
         }
+
+        If($Provisioned -eq $True)
+        {
+            Break
+        } 
+        Else 
+        {
+            Start-Sleep $SleepTime
+            $Counter += $SleepTime
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck loop - waiting for permissions on Azure AD Application - Counter $Counter maxTime $MaxTime"
+        }
+
     }
 
     Return New-Object -TypeName PSObject -Property @{
@@ -574,27 +549,57 @@ Function Invoke-AppTokenRolesCheck {
     $MissingRoles = @()
     $Resource = "https://graph.microsoft.com/"
 
-    # Obtain the token
-    $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $GraphApp.AppId -Secret $Secret -Resource $Resource -ClearTokenCache
+    # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
+    $MaxTime = 300
+    $SleepTime = 10
+    $Counter = 0
 
-    # Perform decode from JWT
-    $tokenPayload = $token.accesstoken.Split(".")[1].Replace('-', '+').Replace('_', '/')
-    while ($tokenPayload.Length % 4) { $tokenPayload += "=" }
-    $tokenByteArray = [System.Convert]::FromBase64String($tokenPayload)
-    $tokenArray = [System.Text.Encoding]::ASCII.GetString($tokenByteArray)
-    $tokobj = $tokenArray | ConvertFrom-Json
+    While($Counter -lt $MaxTime)
+    {
 
-    # Check the roles are in the token, only check Graph at this stage.
-    ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000"})) {
-        If($tokobj.Roles -notcontains $Role.Name) {
-            $MissingRoles += $Role
+        # Obtain the token
+        $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $GraphApp.AppId -Secret $Secret -Resource $Resource -ClearTokenCache
+
+        If($Null -ne $Token)
+        {
+            # Perform decode from JWT
+            $tokenPayload = $token.accesstoken.Split(".")[1].Replace('-', '+').Replace('_', '/')
+            while ($tokenPayload.Length % 4) { $tokenPayload += "=" }
+            $tokenByteArray = [System.Convert]::FromBase64String($tokenPayload)
+            $tokenArray = [System.Text.Encoding]::ASCII.GetString($tokenByteArray)
+            $tokobj = $tokenArray | ConvertFrom-Json
+
+            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Token JWT $($tokenArray)"
+
+            # Check the roles are in the token, only check Graph at this stage.
+            ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000"})) {
+                If($tokobj.Roles -notcontains $Role.Name) {
+                    Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck missing $($Role.Name)"
+                    $MissingRoles += $Role
+                }
+            }
         }
-    }
 
-    If($MissingRoles.Count -gt 0) {
-        $Result = $False
-    } Else {
-        $Result = $True
+        If($MissingRoles.Count -eq 0 -and $Null -ne $Token)
+        {
+            $Result = $True
+        }
+        Else 
+        {
+            $Result = $False
+        }
+
+        If($Result -eq $True)
+        {
+            Break
+        } 
+        Else 
+        {
+            Start-Sleep $SleepTime
+            $Counter += $SleepTime
+            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck loop - Counter $Counter maxTime $MaxTime"
+        }
+
     }
 
     Return New-Object -TypeName PSObject -Property @{
@@ -646,6 +651,8 @@ Function Invoke-Consent {
     Write-Host ""
     Write-Host "For more information about this consent, please review the Scoping Email."
     Write-Host ""
+    Write-Host "If you have Single Sign On (SSO) turned on, and you are not logged on as a Global Administrator, you will need to copy the link below in to an in-private browser session."
+    Write-Host ""
     Write-Host "If the browser window does not load in 20 seconds, copy and paste the following in to a browser:"
     Write-Host ""
     Write-Host $Location
@@ -673,6 +680,9 @@ Function Install-GraphApp {
     
     # Set up the correct Graph Permissions
     Set-GraphPermission -App $GraphApp -Roles $Roles
+
+    # Attempt to fix race condition
+    Start-Sleep 30
 
     # Requst admin consent
     Invoke-Consent -App $GraphApp
@@ -977,7 +987,7 @@ Function Invoke-ModuleFix {
 
         # Dupe modules
         ForEach($DupeModule in $DupeModules) {
-            Write-Host "$(Get-Date) Removing dupelicate modules for $($DupeModule.Module)"
+            Write-Host "$(Get-Date) Removing duplicate modules for $($DupeModule.Module)"
             Uninstall-OldModules -Module $($DupeModule.Module)
         }
 
@@ -1067,7 +1077,7 @@ Function Test-Connections {
     $Connections = @()
 
     If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
-        # Unfortunately, this code has to be dupelicated in order to bring this in to the same context as this function
+        # Unfortunately, this code has to be duplicated in order to bring this in to the same context as this function
         $CurrentPath = Get-Location
 
         $modules = @(Get-ChildItem -Path "$($env:LOCALAPPDATA)\Apps\2.0" -Filter "Microsoft.Exchange.Management.ExoPowershellModule.manifest" -Recurse )
@@ -1273,29 +1283,225 @@ Function Test-Connections {
     Return $Connections
 }
 
-<#
+Function Get-RequiredAppPermissions
+{
 
-    Display the banner 
+    <#
+        This function returns the required application permissions for the AAD application
 
-#>
+        Required Application Permissions
 
-Write-Host "###################################################" -ForegroundColor Green
-Write-Host "# Security Optimization Assessment Pre-requisites #" -ForegroundColor Green
-Write-Host "###################################################" -ForegroundColor Green
-Write-Host ""
+        ID, Name and Resource are required
+        - ID is the scope's unique GUID
+        - Name is used during the token check (to see we are actually getting these scopes assigned to us)
+        - Resource is the application ID for the API we are using, usually this is "00000003-0000-0000-c000-000000000000" which is for Graph
+    #>
 
-Write-Host "The purpose of this script is to check the pre-requisites for performing a Security Optimization Assessment engagement."
-Write-Host "At the conclusion of running this script successfully, a file SOA-PreCheck.json will be generated."
-Write-Host "This file should be sent to the engineer performing the engagement prior to the first day."
-Write-Host ""
-Write-Host "If there are any errors generated, please run this script with -Remediate in order to fix."
-Write-Host ""
-Write-Host "This script MUST be run on the workstation that will be used for performing the collection on Day 1"
-Write-Host ""
+    $AppRoles = @()
 
-If($Remediate) {
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="bf394140-e372-4bf9-a898-299cfc7564e5"
+        Name="SecurityEvents.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph    
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="dc5007c0-2d7d-4c42-879c-2dab87571379"
+        Name="IdentityRiskyUser.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
+        Name="IdentityRiskEvent.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="dc377aa6-52d8-4e23-b271-2a7ae04cedf3"
+        Name="DeviceManagementConfiguration.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="d13f72ca-a275-4b96-b789-48ebcc4da984"
+        Name="Sites.Read.All"
+        Resource="00000003-0000-0ff1-ce00-000000000000"
+    }    
+
+    Return $AppRoles
+}
+
+Function Invoke-ManualModuleCheck
+{
+        <#
+        
+            Manual installation check
+
+            Manual installs can cause issues with modules installed from the PowerShell gallery.
+            It is also difficult to update manual PowerShell module installs.
+        
+        #>
+
+        Write-Host "$(Get-Date) Checking manual module installations..."
+        $ManualInstalls = Get-ManualModules
+
+        If($ManualInstalls -gt 0)
+        {
+
+            Write-Host "$(Get-Date) Modules manually installed that need to be removed"
+            $ManualInstalls
+
+            If($Remediate) 
+            {
+                # Fix manual installs
+                $ManualInstalls = Get-ManualModules -Remediate
+            }
+
+            If($ManualInstalls.Count -gt 0)
+            {
+                Write-Important
+
+                Write-Host "$(Get-Date) The module check has failed as some modules have been manually installed. These will conflict with newer, required modules from the PowerShell Gallery." -ForegroundColor Red
+
+                If($Remediate) 
+                {
+                    Throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. Removal using Add/Remove programs is necessary."
+                } 
+                Else 
+                {
+                    Throw "$(Get-Date) Run this script as administrator with -Remediate to attempt to remove, or manually uninstall them from Add/Remove programs."
+                }
+
+            }
+        }
+}
+
+Function Invoke-SOAVersionCheck
+{
+    <#
+    
+        Determines if SOA module is up to date
+    
+    #>
+    Param
+    (
+        [Switch]$Terminate
+    )
+
+    Write-Host "$(Get-Date) Performing version check.."
+
+    $SOAGallery = (Find-Module SOA)
+    $SOAModule = (Get-Module -ListAvailable SOA | Sort-Object Version -Desc)[0]
+
+    If($SOAGallery.Version -gt $SOAModule.Version) 
+    {
+        $Message = "Version $($SOAGallery.Version) of the SOA tools have been released. Your version $($SOAModule.Version) is out of date. Run Update-Module SOA"
+        If($Terminate)
+        {
+            Throw $Message
+        } 
+        Else 
+        {
+            Write-Host $Message -ForegroundColor Yellow
+        }
+    }
+
+}
+
+Function Install-SOAPrerequisites
+{
+    [CmdletBinding(DefaultParametersetname="Default")]
+    Param (
+    [Parameter(ParameterSetName='Default')]
+        $Bypass=@(),
+        [Switch]$UseProxy,
+    [Parameter(ParameterSetName='ConnectOnly')]
+        [Switch]$ConnectOnly,
+    [Parameter(ParameterSetName='ModulesOnly')]
+        [Switch]$ModulesOnly,
+    [Parameter(ParameterSetName='GraphOnly')]
+        [Switch]$GraphOnly
+    )
+
+    <#
+
+        Variable setting
+
+    #>
+
+    # Default run
+    $ConnectCheck = $True
+    $ModuleCheck = $True
+    $GraphCheck = $True
+
+    # Remediate true now
+    $Remediate = $True
+
+    # Change based on ModuleOnly flag
+    If($ModulesOnly) {
+        $ConnectCheck = $False
+        $ModuleCheck = $True
+        $GraphCheck = $False
+    }
+
+    # Change based on ConnectOnly flag
+    If($ConnectOnly) {
+        $ConnectCheck = $True
+        $GraphCheck = $True
+        $ModuleCheck = $False
+    }
+
+    # Change based on GraphOnly flag
+    If($GraphOnly) {
+        $ConnectCheck = $False
+        $GraphCheck = $True
+        $ModuleCheck = $False
+    }
+
+    <#
+    
+        Directory creating and transcript starting
+    
+    #>
+    $SOADirectory = Get-SOADirectory
+    $TranscriptName = "prereq-$(Get-Date -Format "MMddyyyyHHmms")-log.txt"
+    Start-Transcript "$SOADirectory\$TranscriptName"
+
+    # Check for later version
+    Invoke-SOAVersionCheck -Terminate
+
+    # Check administrator and multiple PowerShell windows
+    If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True) {
+        Throw "PowerShell must be run as Administrator in order to Install-SOAPrerequisites"
+    }
+    If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True) {
+        Throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell modules, and start with a clean PowerShell window running as administrator."
+    }
+
+
+    # Final check list
+    $CheckResults = @()
+
+    $AppRoles = Get-RequiredAppPermissions
+
+    <#
+
+        Display the banner 
+
+    #>
+
+    Write-Host "###################################################" -ForegroundColor Green
+    Write-Host "# Security Optimization Assessment Pre-requisites #" -ForegroundColor Green
+    Write-Host "###################################################" -ForegroundColor Green
+    Write-Host ""
+
+    Write-Host "The purpose of this command is to install and check the pre-requisites for performing a Security Optimization Assessment engagement."
+    Write-Host "At the conclusion of running this command successfully, a file SOA-PreCheck.json will be generated."
+    Write-Host "This file should be sent to the engineer performing the engagement prior to the first day."
+    Write-Host ""
+    Write-Host "This command MUST be run on the workstation that will be used for performing the collection on Day 1"
+    Write-Host ""
+
     Write-Important
-    Write-Host "Remediation has been selected, as part of this script, the following may occur" -ForegroundColor Green
+
+    Write-Host "This command makes changes.. the following will occurr" -ForegroundColor Green
     Write-Host "1. Updates to required PowerShell modules installed on this machine" -ForegroundColor Green
     Write-Host "2. Installation of PowerShell modules required for this engagement" -ForegroundColor Green
     Write-Host "3. Installation of an Azure AD Application." -ForegroundColor Green
@@ -1304,196 +1510,147 @@ If($Remediate) {
     Write-Host "    -- The application secret will not be stored, is randomly generated, and is removed at the conclusion of this script." -ForegroundColor Green
     Write-Host "    -- The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement." -ForegroundColor Green
     Write-Host "4. The computer may restart during this process" -ForegroundColor Green
-}
 
-Write-Host ""
-
-While($True) {
-    $rhInput = Read-Host "Is this being run on the workstation that will be used for collection, and do you want to proceed (y/n)"
-    if($rhInput -eq "n") {
-        exit
-    } elseif($rhInput -eq "y") {
-        Write-Host ""
-        break;
-    }
-}
-
-<#
-
-    Proxy requirement auto-detection
-
-#>
-
-If($UseProxy)
-{
-    Write-Host "Script was ran with UseProxy flag. An attempt will be made to connect through the proxy infrastructure where possible."
-    $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
-} 
-Else 
-{
-    Write-Host "Proxy requirement was not specified with -UseProxy. Connection will be attempted direct."
     Write-Host ""
-    $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
-}
 
-<# 
-
-    Perform the module check
-
-#>
-
-If($ModuleCheck -eq $True) {
-
-    # Determine if the nuget provider is available
-
-    If(!(Get-PackageProvider -Name nuget -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
-        If($Remediate) {
-            Install-PackageProvider -Name NuGet -Force | Out-Null
-        } Else {
-            Write-Error "Proceeding requires the NuGet package manager to be installed. Run this script with -Remediate in order to install the package manager."
+    While($True) {
+        $rhInput = Read-Host "Is this being run on the machine that will be used for collection, are you aware of the changes above, and do you want to proceed (y/n)"
+        if($rhInput -eq "n") {
+            Throw "Run Install-SOAPrerequisites from the machine that you will perform the collection."
+        } elseif($rhInput -eq "y") {
+            Write-Host ""
+            break;
         }
     }
 
-    # Determine if PowerShell gallery is installed
-    If(!(Get-PSRepository -Name PSGallery -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
-        If($Remediate) {
-            Register-PSRepository -Default -InstallationPolicy Trusted | Out-Null
-        } Else {
-            Write-Error "Proceeding requires the PowerShell gallery repository. Run this script with -Remediate in order to configure the repository."
-        }
-    }
+    <#
 
-    Write-Host "$(Get-Date) Checking manual module installations..."
-    $ManualInstalls = Get-ManualModules
+        Proxy requirement auto-detection
 
-    If($ManualInstalls -gt 0)
+    #>
+
+    If($UseProxy)
     {
-
-        Write-Host "$(Get-Date) Modules manually installed that need to be removed"
-        $ManualInstalls
-
-        If($Remediate) 
-        {
-            # Fix manual installs
-            $ManualInstalls = Get-ManualModules -Remediate
-        }
-
-        If($ManualInstalls.Count -gt 0)
-        {
-            Write-Important
-
-            Write-Host "$(Get-Date) The module check has failed as some modules have been manually installed. These will conflict with newer, required modules from the PowerShell Gallery." -ForegroundColor Red
-            If($Remediate) 
-            {
-                Write-Host "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. Removal using Add/Remove programs is necessary." -ForegroundColor Red
-            } 
-            Else 
-            {
-                Write-Host "$(Get-Date) Run this script as administrator with -Remediate to attempt to remove, or manually uninstall them from Add/Remove programs." -ForegroundColor Red
-            }
-            Exit
-        }
+        Write-Host "Script was ran with UseProxy flag. An attempt will be made to connect through the proxy infrastructure where possible."
+        $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
+    } 
+    Else 
+    {
+        Write-Host "Proxy requirement was not specified with -UseProxy. Connection will be attempted direct."
+        Write-Host ""
+        $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
     }
 
-    Write-Host "$(Get-Date) Checking modules..."
+    <# 
 
-    $ModuleCheckResult = Invoke-ModuleCheck
+        Perform the module check
 
-    $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
-    $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False -or $_.Conflict -eq $True})
+    #>
 
-    If($Modules_Error.Count -gt 0) {
-        Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-        $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
+    If($ModuleCheck -eq $True) {
 
-        If($Remediate) {
+        # Determine if the nuget provider is available
+
+        If(!(Get-PackageProvider -Name nuget -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
+            Install-PackageProvider -Name NuGet -Force | Out-Null
+        }
+
+        # Determine if PowerShell gallery is installed
+        If(!(Get-PSRepository -Name PSGallery -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
+            Register-PSRepository -Default -InstallationPolicy Trusted | Out-Null
+        }
+
+        Invoke-ManualModuleCheck
+
+        Write-Host "$(Get-Date) Checking modules..."
+
+        $ModuleCheckResult = Invoke-ModuleCheck
+
+        $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
+        $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False -or $_.Conflict -eq $True})
+
+        If($Modules_Error.Count -gt 0) {
+            Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
+            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
+
             Invoke-ModuleFix $Modules_Error
 
             Write-Host "$(Get-Date) Post remediation pre-requisite check..."
             $ModuleCheckResult = Invoke-ModuleCheck
             $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
             $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False})
-        }
 
-        # Don't continue to check connections, still modules with errors
-        If($Modules_Error.Count -gt 0) {
-            Write-Important
+            # Don't continue to check connections, still modules with errors
+            If($Modules_Error.Count -gt 0) {
+                Write-Important
 
-            Write-Host "$(Get-Date) The module check has failed - run with -Remediate to fix the modules and re-run. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
-            Write-Host "$(Get-Date) The modules must be remediated before continuing. Contact your TAM / or engineer for further information if required. "
-            Exit
+                Write-Host "$(Get-Date) The module check has failed - run with -Remediate to fix the modules and re-run. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
+                Throw "$(Get-Date) The modules must be remediated before continuing. Contact your TAM / or engineer for further information if required. "
+            }
         }
     }
-}
 
-<#
+    <#
 
-    Perform the connection check
+        Perform the connection check
 
-#>
+    #>
 
-If($ConnectCheck -eq $True) {
-    # Proceed to testing connections
-    
-    $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting)
-    
-    $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
-    $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $_.OtherErrors -ne $Null})
-}
-
-If($GraphCheck -eq $True) {
-
-    If((Get-AzureADConnected) -eq $False) {
-        Connect-AzureAD | Out-Null
+    If($ConnectCheck -eq $True) {
+        # Proceed to testing connections
+        
+        $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting)
+        
+        $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
+        $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $Null -ne $_.OtherErrors})
     }
 
-    Write-Host "$(Get-Date) Checking Graph..."
+    If($GraphCheck -eq $True) {
 
-    # Get the default MSOL domain
-    $tenantdomain = (Get-AzureADDomain | Where-Object {$_.Name -like "*.onmicrosoft.com" -and $_.Name -notlike "*.mail.onmicrosoft.com"}).Name
+        # When GraphCheck is ran by itself, this script will not be connected to Azure AD
+        If((Get-AzureADConnected) -eq $False) {
+            Connect-AzureAD | Out-Null
+        }
 
-    $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+        Invoke-LoadAdal
 
-    # Determine if Azure AD Application Exists
-    $GraphApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
+        Write-Host "$(Get-Date) Checking Graph..."
 
-    # Graph App doesnt exist and the remediation flag has been specified
-    If(!$GraphApp -and $Remediate) {
-        If($Remediate) {
+        # Get the default MSOL domain
+        $tenantdomain = (Get-AzureADDomain | Where-Object {$_.Name -like "*.onmicrosoft.com" -and $_.Name -notlike "*.mail.onmicrosoft.com"}).Name
 
+        # Determine if Azure AD Application Exists
+        $GraphApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
+
+        # Graph App doesnt exist, install it
+        If(!$GraphApp) 
+        {
             Write-Host "$(Get-Date) Installing Graph Application..."
-
             $GraphApp = Install-GraphApp -Roles $AppRoles
-
-        }
-    }
-
-    If($GraphApp) {
-
-        # Pass the graph app check
-        $CheckResults += New-Object -Type PSObject -Property @{
-            Check="Graph Application"
-            Pass=$True
         }
 
-        # Reset secret
-        $clientsecret = Reset-AppSecret -App $GraphApp
+        If($GraphApp) 
+        {
 
-        # Perform check for Graph Permission
-        Write-Host "$(Get-Date) Performing Application Permission Check..."
-        $Result = Invoke-AppPermissionCheck -App $GraphApp -Roles $AppRoles
-            
-        # Graph Permission - Perform remediation if specified
-            If($Result.Pass -eq $False -and $Remediate) {
+            # Pass the graph app check
+            $CheckResults += New-Object -Type PSObject -Property @{
+                Check="Graph Application"
+                Pass=$True
+            }
+
+            # Reset secret
+            $clientsecret = Reset-AppSecret -App $GraphApp
+
+            # Perform check for Graph Permission
+            Write-Host "$(Get-Date) Performing Application Permission Check..."
+            $Result = Invoke-AppPermissionCheck -App $GraphApp
+                
+            # Graph Permission - Perform remediation if specified
+            If($Result.Pass -eq $False) {
                 # Set up the correct Graph Permissions
                 Write-Host "$(Get-Date) Remediating Application Permissions..."
-                If((Set-GraphPermission -App $GraphApp -Roles $AppRoles) -eq $True) {
-                    # Requst admin consent
-                    If((Invoke-Consent -App $GraphApp) -eq $True) {
-                        # Sleep to prevent race
-                        Start-Sleep 60
-                        $Result = Invoke-AppPermissionCheck -App $GraphApp -Roles $AppRoles
-                    }
+                If((Set-GraphPermission -App $GraphApp -Roles $AppRoles -PerformConsent:$True) -eq $True) {
+                        $Result = Invoke-AppPermissionCheck -App $GraphApp
                 }
             }
 
@@ -1503,12 +1660,10 @@ If($GraphCheck -eq $True) {
             Write-Host "$(Get-Date) Performing token check..."
             $Result = Invoke-AppTokenRolesCheck -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -Roles $AppRoles
             
-            If($Result.Pass -eq $False -and $Remediate) {
+            If($Result.Pass -eq $False) {
                 Write-Host "$(Get-Date) Missing roles in token, possible that consent was not completed..."
                     # Requst admin consent
                     If((Invoke-Consent -App $GraphApp) -eq $True) {
-                        # Sleep to prevent race, then re-perform check
-                        Start-Sleep 60
                         $Result = Invoke-AppTokenRolesCheck -GraphApp $App -Secret $clientsecret -TenantDomain $tenantdomain -Roles $AppRoles
                     }                
             }
@@ -1520,7 +1675,9 @@ If($GraphCheck -eq $True) {
             Write-Host "$(Get-Date) Performing Graph Test..."
             $CheckResults += Invoke-GraphTest -GraphApp $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain
 
-        } Else {
+        } 
+        Else 
+        {
             # Graph app does not exist
             $CheckResults += New-Object -Type PSObject -Property @{
                 Check="Graph Application"
@@ -1528,80 +1685,88 @@ If($GraphCheck -eq $True) {
             }
         }
 
-}
-
-<#
-
-    Generic checks
-
-#>
-
-# WinRM Basic Authentication
-$CheckResults += Invoke-WinRMBasicCheck
-
-Write-Host "$(Get-Date) Detailed Output"
-
-If($ModuleCheck -eq $True) {
-
-    Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
-    $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,Updated
-    
-    If($Modules_Error.Count -gt 0) {
-        Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-        $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
-
-        $CheckResults += New-Object -TypeName PSObject -Property @{
-            Check="Module Installation"
-            Pass=$False
-        }
-
-    } Else {
-        $CheckResults += New-Object -TypeName PSObject -Property @{
-            Check="Module Installation"
-            Pass=$True
-        }
     }
 
-}
+    <#
 
-If($ConnectCheck -eq $True) {
+        Generic checks
 
-    Write-Host "$(Get-Date) Connections" -ForegroundColor Green
-    $Connections_OK | Format-Table Name,Connected,TestCommand
-    
-    If($Connections_Error.Count -gt 0) {
-        Write-Host "$(Get-Date) Connections with errors" -ForegroundColor Red
-        $Connections_Error | Format-Table Name,Connected,TestCommand
-        $CheckResults += New-Object -Type PSObject -Property @{
-            Check="Module Connections"
-            Pass=$False
+    #>
+
+    # WinRM Basic Authentication
+    $CheckResults += Invoke-WinRMBasicCheck
+
+    Write-Host "$(Get-Date) Detailed Output"
+
+    If($ModuleCheck -eq $True) 
+    {
+
+        Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
+        $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,Updated
+        
+        If($Modules_Error.Count -gt 0) 
+        {
+            Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
+            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
+
+            $CheckResults += New-Object -TypeName PSObject -Property @{
+                Check="Module Installation"
+                Pass=$False
+            }
+
+        } 
+        Else 
+        {
+            $CheckResults += New-Object -TypeName PSObject -Property @{
+                Check="Module Installation"
+                Pass=$True
+            }
         }
-    } Else {
-        $CheckResults += New-Object -Type PSObject -Property @{
-            Check="Module Connections"
-            Pass=$True
-        }
+
     }
 
+    If($ConnectCheck -eq $True) 
+    {
+
+        Write-Host "$(Get-Date) Connections" -ForegroundColor Green
+        $Connections_OK | Format-Table Name,Connected,TestCommand
+        
+        If($Connections_Error.Count -gt 0) {
+            Write-Host "$(Get-Date) Connections with errors" -ForegroundColor Red
+            $Connections_Error | Format-Table Name,Connected,TestCommand
+            $CheckResults += New-Object -Type PSObject -Property @{
+                Check="Module Connections"
+                Pass=$False
+            }
+        } Else {
+            $CheckResults += New-Object -Type PSObject -Property @{
+                Check="Module Connections"
+                Pass=$True
+            }
+        }
+
+    }
+
+    If($GraphCheck -eq $True) {
+
+        Write-Host "$(Get-Date) Graph checks" -ForegroundColor Green
+
+    }
+
+    Write-Host "$(Get-Date) Summary of Checks"
+
+    $CheckResults | Format-Table Check,Pass
+
+    New-Object -TypeName PSObject -Property @{
+        Date=$(Get-Date)
+        Results=$CheckResults
+        ModulesOK=$Modules_OK
+        ModulesError=$Modules_Error
+        ConnectionsOK=$Connections_OK
+        ConnectionsError=$Connections_Error
+    } | ConvertTo-Json | Out-File SOA-PreCheck.json
+
+    Write-Host "$(Get-Date) Output sent to SOA-PreCheck.json which can be sent to the engineer running the assessment"
+
+    Stop-Transcript "$SOADirectory\$TranscriptName"
 }
-
-If($GraphCheck -eq $True) {
-
-    Write-Host "$(Get-Date) Graph checks" -ForegroundColor Green
-
-}
-
-Write-Host "$(Get-Date) Summary of Checks"
-
-$CheckResults | Format-Table Check,Pass
-
-New-Object -TypeName PSObject -Property @{
-    Date=$(Get-Date)
-    Results=$CheckResults
-    ModulesOK=$Modules_OK
-    ModulesError=$Modules_Error
-    ConnectionsOK=$Connections_OK
-    ConnectionsError=$Connections_Error
-} | ConvertTo-Json | Out-File SOA-PreCheck.json
-
-Write-Host "$(Get-Date) Output sent to SOA-PreCheck.json which can be sent to the engineer running the assessment"

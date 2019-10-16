@@ -27,16 +27,18 @@ An Azure AD application is also installed in to your tenancy. For more informati
 
 In order to run the pre-requisite script, you must have:
 * Local Admin Access to the workstation that you will perform the collection from
+* PowerShell Gallery set up (Automatically configured on PowerShell 5, which is standard on Windows 10)
 
 ### Running the pre-requisite script
 
-1. Download the Get-SOAPrerequsiites.ps1 script to a folder on the collection computer
-2. Load a PowerShell prompt as administrator (this is important, in order to update/install modules)
-3. Run the Get-SOAPrerequisite.ps1 script by executing the following
+1. Load a PowerShell prompt as administrator (this is important, in order to update/install modules)
+2. Run the following - which will install the latest script from Powershell Gallery
 
-.\GetSOAPrerequisite.ps1 -Remediate
+Install-Module SOA
 
-4. During the execution of the script, please read all prompts and notices, and provide consent to the Azure AD application which is documented below.
+3. Run the following to install the pre-requisites
+
+Install-SOAPrerequisites
 
 ### Collection machine
 
