@@ -10,32 +10,18 @@
 
         The output of the script and JSON file can be sent to the engineer performing the engagement.
 
-    .PARAMETER Remediate
-        This attempts to remediate any findings, the following can be remediated
-            - Missing modules when the underlying module is in the PowerShell gallery
-            - Updating modules when the underlying module in the PowerShell gallery
-            - Duplicate modules, where an outdated version is installed
-            - Installation of SkypeOnline connector
-            - Installation of Enterprise Application for Graph polling
-
-    .PARAMETER ConnectOnly
-        Only performs the Connection checks - may be useful if it's confirmed the modules already
-        have no issues.
-        
-    .PARAMETER ModulesOnly
-        Only checks the module pre-requisites, does not perform any connection checks.
-
-    .PARAMETER Bypass
-        Multi-valued.
-        
-        Can be used to bypass specific functionality that may not be applicable to the assessment
-        being ran, for instance, in order to Bypass SharePoint
-
-        -Bypass SharePoint
-
-        In order to bypass SharePoint and Skype
-
-        -Bypass "SharePoint","Skype"
+        ############################################################################
+        # This sample script is not supported under any Microsoft standard support program or service. 
+        # This sample script is provided AS IS without warranty of any kind. 
+        # Microsoft further disclaims all implied warranties including, without limitation, any implied 
+        # warranties of merchantability or of fitness for a particular purpose. The entire risk arising 
+        # out of the use or performance of the sample script and documentation remains with you. In no
+        # event shall Microsoft, its authors, or anyone else involved in the creation, production, or 
+        # delivery of the scripts be liable for any damages whatsoever (including, without limitation, 
+        # damages for loss of business profits, business interruption, loss of business information, 
+        # or other pecuniary loss) arising out of the use of or inability to use the sample script or
+        # documentation, even if Microsoft has been advised of the possibility of such damages.
+        ############################################################################
 
 #>
 
