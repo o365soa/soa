@@ -1585,6 +1585,15 @@ Function Install-SOAPrerequisites
 
     <#
 
+        Generic checks
+
+    #>
+
+    # WinRM Basic Authentication
+    $CheckResults += Invoke-WinRMBasicCheck
+
+    <#
+
         Perform the connection check
 
     #>
@@ -1679,15 +1688,6 @@ Function Install-SOAPrerequisites
         }
 
     }
-
-    <#
-
-        Generic checks
-
-    #>
-
-    # WinRM Basic Authentication
-    $CheckResults += Invoke-WinRMBasicCheck
 
     Write-Host "$(Get-Date) Detailed Output"
 
