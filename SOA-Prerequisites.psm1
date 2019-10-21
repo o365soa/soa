@@ -737,6 +737,11 @@ Function Get-ModuleStatus {
 
         $InstalledModule = @(Get-Module -ListAvailable | Where-Object {$_.Name -eq $ModuleName})
 
+        ForEach($M in $InstalledModule)
+        {
+            Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Version $($M.Version.ToString()) Path $($M.Path)"
+        }
+
         If($InstalledModule.Count -gt 1) {
             # More than one module, flag this
             $MultipleFound = $True
@@ -759,6 +764,8 @@ Function Get-ModuleStatus {
                 $Updated = $True
             }
         }
+
+        Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Verdict Installed $($Installed) InstalledV $($InstalledModule.Version) GalleryV $($GalleryVersion) Multiple $($Multiple) Updated $($Updated)"
 
         Return New-Object -TypeName PSObject -Property @{
             Module=$ModuleName
@@ -1390,6 +1397,7 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
         $Bypass=@(),
         [Switch]$UseProxy,
+        [Switch]$AllowMultipleWindows,
     [Parameter(ParameterSetName='ConnectOnly')]
         [Switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
@@ -1449,8 +1457,15 @@ Function Install-SOAPrerequisites
     If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True) {
         Throw "PowerShell must be run as Administrator in order to Install-SOAPrerequisites"
     }
-    If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True) {
-        Throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell modules, and start with a clean PowerShell window running as administrator."
+    If($AllowMultipleWindows) {
+        Write-Important
+        Write-Host "Allow multiple windows has been specified. This should not be used in general operation. Module remediation may fail!"
+    } 
+    Else 
+    {
+        If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True) {
+            Throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell modules, and start with a clean PowerShell window running as administrator."
+        }
     }
 
 
