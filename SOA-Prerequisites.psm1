@@ -988,7 +988,6 @@ Function Get-ManualModules
     <#
     
     Determines if there are any manual module installs as opposed to PowerShell gallery installs
-    When running with -Remediate these are attempted to be removed from the PSModulePath
     
     #>
     Param(
@@ -1346,14 +1345,7 @@ Function Invoke-ManualModuleCheck
 
                 Write-Host "$(Get-Date) The module check has failed as some modules have been manually installed. These will conflict with newer, required modules from the PowerShell Gallery." -ForegroundColor Red
 
-                If($Remediate) 
-                {
-                    Throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. Removal using Add/Remove programs is necessary."
-                } 
-                Else 
-                {
-                    Throw "$(Get-Date) Run this script as administrator with -Remediate to attempt to remove, or manually uninstall them from Add/Remove programs."
-                }
+                Throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. Removal using Add/Remove programs is necessary."
 
             }
         }
@@ -1570,7 +1562,7 @@ Function Install-SOAPrerequisites
             If($Modules_Error.Count -gt 0) {
                 Write-Important
 
-                Write-Host "$(Get-Date) The module check has failed - run with -Remediate to fix the modules and re-run. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
+                Write-Host "$(Get-Date) The module check has failed. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
                 Throw "$(Get-Date) The modules must be remediated before continuing. Contact your TAM / or engineer for further information if required. "
             }
         }
