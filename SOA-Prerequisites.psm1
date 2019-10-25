@@ -1827,7 +1827,15 @@ Function Install-SOAPrerequisites
         ConnectionsError=$Connections_Error
     } | ConvertTo-Json | Out-File SOA-PreCheck.json
 
-    Write-Host "$(Get-Date) Output sent to SOA-PreCheck.json which can be sent to the engineer running the assessment"
+    Write-Host "$(Get-Date) Output sent to SOA-PreCheck.json which should be sent to the engineer running the assessment"
+    Write-Host ""
+
+    While($True) {
+        $rhInput = Read-Host "Type 'yes' when you have sent the SOA-PreCheck.json file to the engineer running the assessment.."
+        if($rhInput -eq "yes") {
+            break;
+        }
+    }
 
     Stop-Transcript
 }
