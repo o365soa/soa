@@ -63,6 +63,18 @@ The scope of this application is limited to the following:
 * DeviceManagementConfiguration.Read.
 * Sites.Read.All
 
+### SecurityEvents.Read.All
+This scope is used for SOA to read active security events within your tenant from Graph.
+
+### IdentityRiskyUser.Read.All / IdentityRiskEvent.Read.All
+These scopes allow SOA to look at identity risk events raised by Azure Identity Protection.
+
+### DeviceManagementConfiguration.Read
+This scope allows SOA to read your InTune configuration policies, if you have them.
+
+### Sites.Read.All
+This scope allows SOA to read your SharePoint site configuration for various recommended security config.
+
 ### Azure AD Application Security
 
 Being a Security focussed engagement, we are concerned about the security of the Azure AD Application created as part of this engagement, which is why the following security considerations are made:
