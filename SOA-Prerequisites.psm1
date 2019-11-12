@@ -326,35 +326,6 @@ Function Get-AzureADConnected {
     }
 }
 
-Function Get-GraphToken {
-    <#
-    
-        Gets a token which can be used for Graph
-    
-    #>
-    Param (
-        $GraphApp
-    )
-
-    # Get the default MSOL domain
-    $tenantdomain = (Get-AzureADDomain | Where-Object {$_.Name -like "*.onmicrosoft.com" -and $_.Name -notlike "*.mail.onmicrosoft.com"}).Name
-
-    $loginURL       = "https://login.windows.net/"
-    $msgraphEndpoint = "https://graph.microsoft.com/"
-
-    # Get an Oauth 2 access token based on client id, secret and tenant domain
-    $body       = @{grant_type="client_credentials";resource=$msgraphEndpoint;client_id=$($GraphApp.AppId);client_secret=$($clientsecret.Value)}
-    $oauth      = Invoke-RestMethod -Method Post -Uri $loginURL/$tenantdomain/oauth2/token?api-version=1.0 -Body $body -ErrorAction:SilentlyContinue -ErrorVariable:AuthError
-    
-    If($null -ne $oauth.access_token) {
-        Return $oauth
-    } Else {
-        Write-Error "Failed to get access token"
-        Return $False
-    }
-    
-}
-
 Function Invoke-GraphTest {
     <#
     
@@ -1331,6 +1302,16 @@ Function Get-RequiredAppPermissions
         Name="DeviceManagementConfiguration.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+    <#
+        Commented out as currently Conditional Access cant be pulled using Application Permissions
+        This will need to be moved to delegated permissions.
+        
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="246dd0d5-5bd0-4def-940b-0421030a5b68"
+        Name="Policy.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+    #>
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="d13f72ca-a275-4b96-b789-48ebcc4da984"
         Name="Sites.Read.All"
@@ -1385,27 +1366,25 @@ Function Invoke-SOAVersionCheck
         Determines if SOA module is up to date
     
     #>
-    Param
-    (
-        [Switch]$Terminate
-    )
-
-    Write-Host "$(Get-Date) Performing version check.."
 
     $SOAGallery = (Find-Module SOA)
     $SOAModule = (Get-Module -ListAvailable SOA | Sort-Object Version -Desc)[0]
 
     If($SOAGallery.Version -gt $SOAModule.Version) 
     {
-        $Message = "Version $($SOAGallery.Version) of the SOA tools have been released. Your version $($SOAModule.Version) is out of date. Run Update-Module SOA"
-        If($Terminate)
-        {
-            Throw $Message
-        } 
-        Else 
-        {
-            Write-Host $Message -ForegroundColor Yellow
-        }
+        $Updated = $False
+    }
+    else
+    {
+        $Updated = $True
+    }
+
+    Write-Verbose "$(Get-Date) Invoke-SOAVersionCheck Updated $Updated Gallery $($SOAGallery.Version) Module $($SOAModule.Version)"
+
+    Return New-Object -TypeName PSObject -Property @{
+        Updated = $Updated
+        Gallery = $SOAGallery.Version
+        Module = $SOAModule.Version
     }
 
 }
@@ -1523,7 +1502,12 @@ Function Install-SOAPrerequisites
     Start-Transcript "$SOADirectory\$TranscriptName"
 
     # Check for later version
-    Invoke-SOAVersionCheck -Terminate
+    Write-Host "$(Get-Date) Performing version check.."
+    $VersionCheck = Invoke-SOAVersionCheck
+    If($VersionCheck.Updated -eq $False)
+    {
+            Throw "Version $($VersionCheck.Gallery) of the SOA tools have been released. Your version $($VersionCheck.Module) is out of date. Run Update-Module SOA"
+    }
 
     # Check administrator and multiple PowerShell windows
     If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True) {
@@ -1691,7 +1675,7 @@ Function Install-SOAPrerequisites
         Write-Host "$(Get-Date) Checking Graph..."
 
         # Get the default MSOL domain
-        $tenantdomain = (Get-AzureADDomain | Where-Object {$_.Name -like "*.onmicrosoft.com" -and $_.Name -notlike "*.mail.onmicrosoft.com"}).Name
+        $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
 
         # Determine if Azure AD Application Exists and create if doesnt
         $GraphApp = Get-SOAGraphApp
