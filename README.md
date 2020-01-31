@@ -86,3 +86,7 @@ Being a Security focussed engagement, we are concerned about the security of the
 ### Removal of Azure AD Application
 
 It is possible to remove the Azure AD Application at the conclusion of the engagement. This is not considered necessary, as the Application only has a short-lived secret and cannot be used without a valid secret. It is important however, that you do not remove the Azure AD Application in-between running the pre-requisite script and the conclusion of the engagement. 
+
+## Log Analytics Upload
+
+When running a Security Optimization Assessment, customers can opt to have their remediation planning results uploaded to Log Analytics (to keep historic data). The Export-SOARPS command within this script enables this **optional** service.
