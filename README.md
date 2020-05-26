@@ -1,92 +1,85 @@
-# Office 365 SOA Pre-requisites
+# Office 365 SOA Prerequisites
 
 ## Introduction
 
-The Office 365 Security Optimization Assessment toolset has several pre-requisites that need to be installed or configured. The tool runs in PowerShell, and connects to various Office 365 services.
+The Office 365 Security Optimization Assessment toolset has several prerequisites that need to be installed or configured. The tool runs in PowerShell, and connects to various Microsoft 365 services.
 
-## Pre-requisite Breakdown
+## Prerequisite Breakdown
 
-Pre-requisite installation is simplified by the use of a PowerShell pre-requisite script
+Prerequisite installation is simplified by the use of a PowerShell prerequisite script
 
-The following pre-requsites are installed, or updated by the pre-requisite installation script.
-* Azure AD MSOnline PowerShell Module
-* Azure AD Preview PowerShell Module
-* SharePoint Online PowerShell Module
-* SharePoint PNP PowerShell Module
-* Skype for Business PowerShell Module
+The following prerequsites are installed, or updated by the prerequisite installation script:
+* Azure AD MSOnline (v1) PowerShell module
+* Azure AD (v2) Preview PowerShell module
+* Exchange Online (v1) PowerShell module
+* SharePoint Online PowerShell module
+* SharePoint PNP PowerShell module
+* Skype for Business Online PowerShell module
 
-The following pre-requisites are removed
-* SharePoint Online PowerShell Module - if manually installed, this is removed from your PS Module Path to prevent conflicts
-* Azure AD (Non Preview) Module - which conflicts with the required Azure AD Preview module
+The following prerequisites are removed
+* SharePoint Online PowerShell module - if manually installed, this is removed from your PS Module Path to prevent conflicts
+* Azure AD (Non-preview) module - conflicts with the required Azure AD Preview module
 
-An Azure AD application is also installed in to your tenancy. For more information on this see below
+An Azure AD application is also installed in your tenant. For more information on this see below.
 
-## Pre-requisite Script
+## Prerequisite Script
 
 ### Requirements
 
-In order to run the pre-requisite script, you must have:
-* Local Admin Access to the workstation that you will perform the collection from
-* PowerShell Gallery set up (Automatically configured on PowerShell 5, which is standard on Windows 10)
+In order to install the module and run the prerequisite script, you must have:
+* Local Admin access to the workstation that you will perform the collection from
+* PowerShell Gallery access configured (Automatically configured on PowerShell 5, which is standard on Windows 10)
+* PowerShellGet version 2.2.4 or higher
+   * As of April 2020, PowerShell Gallery supports only TLS 1.2.  While PowerShell and Windows support TLS 1.2, in some proxy environments the proxy server might negotiate a lower version, which will cause a Resource Unavailable error when attempting to install any module from PowerShell Gallery.  PowerShellGet 2.2.4 works around this issue by temporarily forcing TLS 1.2 when installing any module from PowerShell Gallery and then changing back to the OS default.  If at least PowerShellGet 2.2.4 is not installed, run the following to install 2.2.4.1 (version number difference is intentional):
+   
+      `Install-Module PowerShellGet -RequiredVersion 2.2.4.1`
 
-### Running the pre-requisite script
+### Running the prerequisite script
 
 1. Load a PowerShell prompt as administrator (this is important, in order to update/install modules)
-2. Run the following - which will install the latest script from Powershell Gallery
+2. Run the following (which will install the latest module from Powershell Gallery):
 
-Install-Module SOA
+   `Install-Module SOA`
 
-3. Run the following to install the pre-requisites
+3. Run the following to install the prerequisites:
 
-Install-SOAPrerequisites
+   `Install-SOAPrerequisites`
 
 ### Collection machine
 
 The script must be run from the machine that you will use to perform the collection as part of the engagement. Please consider the following:
 * The machine should not be a production server, as the pre-requisite script may cause a reboot during installation of modules.
-* You require to be logged on as a local administrator.
+* You are require to be logged on as a local administrator.
 
 ### Requiring a proxy
 
-We recommend that traffic through to Office 365 bypasses proxy infrastructure, and this script also needs connectivity to the PowerShell gallery as well.
+We recommend that traffic routing to Microsoft 365 bypasses proxy infrastructure, and this script needs connectivity to the PowerShell Gallery, as well.
 
-If a proxy is required, try running with -UseProxy
+If a proxy is required, try running with `-UseProxy`.
 
-## Azure AD Application
+## Azure AD application
 
-An Azure AD Application is required in order to perform API calls to Graph and SharePoint. Installation of this application is performed by the pre-requisite script, however, there are some things that you should be aware of:
+An Azure AD Application is required in order to perform API calls to Microsoft Graph and SharePoint Online. Installation of this application is performed by the prerequisite script. There are some things, however, that you should be aware of:
 
 The scope of this application is limited to the following:
-* SecurityEvents.Read.All
-* IdentityRiskyUser.Read.All
-* IdentityRiskEvent.Read.All
-* DeviceManagementConfiguration.Read.
-* Sites.Read.All
+* **SecurityEvents.Read.All** (This scope allows SOA to read active security events within your tenant from Microsoft Graph.)
+* **IdentityRiskyUser.Read.All** (This scope allows SOA to look at identity risk events raised by Azure Identity Protection.)
+* **IdentityRiskEvent.Read.All** (This scope allows SOA to look at identity risk events raised by Azure Identity Protection.)
+* **DeviceManagementConfiguration.Read** (This scope allows SOA to read your Intune configuration policies, if applicable.)
+* **Sites.Read.All** (This scope allows SOA to read your SharePoint Online site configuration for various recommended security settings.)
 
-### SecurityEvents.Read.All
-This scope is used for SOA to read active security events within your tenant from Graph.
+### Azure AD application security
 
-### IdentityRiskyUser.Read.All / IdentityRiskEvent.Read.All
-These scopes allow SOA to look at identity risk events raised by Azure Identity Protection.
+Being a security-focused assessment, we are conscious of the security of the Azure AD application created for it, which is why the following security considerations are made:
+* Azure AD applications are scoped only to certain activities, which are documented above. Scopes are used only when they are required, and the assessment follows a 'least-permission possible' model. Most scopes are read-only and specific to configuration settings, not access to any user content.
+* The Azure AD application secret is randomly generated by Azure AD on creation.
+* The Azure AD application secret is stored only in memory during the execution of the data collection script. (It is never stored in a file.)
+* The expiration date of the secret is 48 hours, which allows for the collection script to be run again, if necessary.
 
-### DeviceManagementConfiguration.Read
-This scope allows SOA to read your InTune configuration policies, if you have them.
+### Removal of Azure AD application
 
-### Sites.Read.All
-This scope allows SOA to read your SharePoint site configuration for various recommended security config.
+You can remove the Azure AD application at the conclusion of the engagement. This is not considered necessary, as the application has only a short-lived secret and cannot be used without a valid secret. It is important, however, that you **do not** remove the Azure AD application prior to the conclusion of the engagement.
 
-### Azure AD Application Security
+## Log Analytics upload
 
-Being a Security focussed engagement, we are concerned about the security of the Azure AD Application created as part of this engagement, which is why the following security considerations are made:
-* Azure AD applications are scoped only to certain activities, which are documented above. Scopes are only used when they are required, and the engagement follows a 'least permission possible' model. Most scopes are Read only and specific to configuration.
-* The Azure AD Application secret is randomly generated by Azure AD on creation
-* The Azure AD Application secret is only kept in memory during the operation of the scripts. It is never stored.
-* Azure AD Application secrets can have expiry dates. We set the expiry date of the secret to be 48 hours.
-
-### Removal of Azure AD Application
-
-It is possible to remove the Azure AD Application at the conclusion of the engagement. This is not considered necessary, as the Application only has a short-lived secret and cannot be used without a valid secret. It is important however, that you do not remove the Azure AD Application in-between running the pre-requisite script and the conclusion of the engagement. 
-
-## Log Analytics Upload
-
-When running a Security Optimization Assessment, customers can opt to have their remediation planning results uploaded to Log Analytics (to keep historic data). The Export-SOARPS command within this script enables this **optional** service.
+When running a Security Optimization Assessment, customers can opt to have their remediation planning results uploaded to Log Analytics (to keep historic data). The Export-SOARPS command in this module is used with this **optional** service.
