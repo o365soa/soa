@@ -1,4 +1,5 @@
 #Requires -Version 5.1
+#Requires -Modules @{ModuleName="PowerShellGet"; ModuleVersion="2.2.4"}
 
 <#
 
