@@ -1308,6 +1308,11 @@ Function Get-RequiredAppPermissions
         Name="AuditLog.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="7ab1d382-f21e-4acd-a863-ba3e13f7da61"
+        Name="Directory.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
     <#
         Commented out as currently Conditional Access cant be pulled using Application Permissions
         This will need to be moved to delegated permissions.
