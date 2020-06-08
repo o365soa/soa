@@ -1473,7 +1473,13 @@ Function Install-SOAPrerequisites
         Variable setting
 
     #>
-
+    
+    #Detect if running in ISE and abort ($psise is an automatic variable that exists only in the ISE)
+    if ($psise)
+        {
+        throw "Running this script in the PowerShell ISE is not supported."
+        }
+    
     # Default run
     $ConnectCheck = $True
     $ModuleCheck = $True
