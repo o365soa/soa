@@ -1209,7 +1209,7 @@ Function Test-Connections {
 
         Write-Host "$(Get-Date) Connecting to SharePoint Online.."
         $adminUrl = Get-SharePointAdminUrl
-        Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable $ConnectError | Out-Null
+        Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null
 
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
