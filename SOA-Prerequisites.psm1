@@ -1209,7 +1209,7 @@ Function Test-Connections {
 
         Write-Host "$(Get-Date) Connecting to SharePoint Online.."
         $adminUrl = Get-SharePointAdminUrl
-        Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable $ConnectError | Out-Null
+        Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null
 
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
@@ -1473,7 +1473,13 @@ Function Install-SOAPrerequisites
         Variable setting
 
     #>
-
+    
+    #Detect if running in ISE and abort ($psise is an automatic variable that exists only in the ISE)
+    if ($psise)
+        {
+        throw "Running this script in the PowerShell ISE is not supported."
+        }
+    
     # Default run
     $ConnectCheck = $True
     $ModuleCheck = $True
