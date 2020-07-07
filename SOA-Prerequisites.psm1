@@ -1238,7 +1238,7 @@ Function Test-Connections {
 
         Write-Host "$(Get-Date) Connecting to Skype..."
         $SfBOAdminDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
-        $SfBOSession = New-CsOnlineSession -OverrideAdminDomain $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue
+        $SfBOSession = New-CsOnlineSession -OverrideAdminDomain $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue -SessionOption $RPSProxySetting
 
         If($SfBOSession.State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
