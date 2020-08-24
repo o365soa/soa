@@ -1821,7 +1821,7 @@ Function Install-SOAPrerequisites
 
     New-Object -TypeName PSObject -Property @{
         Date=$(Get-Date)
-	Version="0.4.5"
+	Version="0.4.6"
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
