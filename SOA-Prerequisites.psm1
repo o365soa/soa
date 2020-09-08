@@ -197,7 +197,7 @@ Function Install-ExchangeModule {
     Write-Host "Depending on your AuthentiCode settings, you may see an 'Application Install - Security Warning'" -ForegroundColor Yellow
     Write-Host "Verify the publisher is Microsoft Corporation and Ensure you select 'Install'" -ForegroundColor Yellow
 
-    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication https://aka.ms/exopsmodule"
+    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication http://aka.ms/exopspreview"
 
     $Installing = $True
     $Installed = $False
@@ -948,8 +948,10 @@ Function Invoke-ModuleFix {
         }
 
         # Exchange check
-        If($Modules | Where-Object {$_.Module -eq "Exchange Online" -and $_.Installed -eq $False}) {
-            Install-ExchangeModule | Out-Null
+        if ($UseEXOv2Module -eq $false) {
+            If($Modules | Where-Object {$_.Module -eq "Exchange Online" -and $_.Installed -eq $False}) {
+                Install-ExchangeModule | Out-Null
+            }
         }
 
         # Conflict modules, need to be removed
@@ -1032,6 +1034,7 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "SharePointPnPPowerShellOnline","Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Skype") {$RequiredModules += "SkypeOnlineConnector"}
+    if ($Bypass -notcontains "Exchange" -and $UseEXOv2Module) {$RequiredModules += "ExchangeOnlineManagement"}
 
     $ModuleCheckResult = @()
 
@@ -1046,8 +1049,10 @@ Function Invoke-SOAModuleCheck {
         }
     }
 
-    If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
-        $ModuleCheckResult += (Get-ModuleStatus -ExtModule_Exchange)
+    if ($UseEXOv2Module -eq $false) {
+        If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
+            $ModuleCheckResult += (Get-ModuleStatus -ExtModule_Exchange)
+        }
     }
 
     Return $ModuleCheckResult
@@ -1060,7 +1065,7 @@ Function Test-Connections {
 
     $Connections = @()
 
-    If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
+    if ($UseEXOv2Module -eq $false -and ($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {
         # Unfortunately, this code has to be duplicated in order to bring this in to the same context as this function
         $CurrentPath = Get-Location
 
@@ -1144,7 +1149,12 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
+        if ($UseEXOv2Module) {
+            ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
+        }
+        else {
+            Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
+        }
 
         If((Get-PSSession | Where-Object {$_.ComputerName -like "*protection.outlook.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
@@ -1174,8 +1184,13 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        Connect-EXOPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
-
+        if ($UseEXOv2Module) {
+            Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
+        }
+        else {
+            Connect-EXOPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
+        }
+        
         If((Get-PSSession | Where-Object {$_.ComputerName -eq "outlook.office365.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
         # Run test command
@@ -1456,10 +1471,13 @@ Function Install-SOAPrerequisites
     [CmdletBinding(DefaultParametersetname="Default")]
     Param (
     [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ConnectOnly')]
+    [Parameter(ParameterSetName='ModulesOnly')]
         $Bypass=@(),
         [Switch]$UseProxy,
-    [Parameter(DontShow)]
-        [Switch]$AllowMultipleWindows,
+        [switch]$UseEXOv2Module,
+        [Parameter(DontShow)][Switch]$AllowMultipleWindows,
+        [Parameter(DontShow)][switch]$NoVersionCheck,
     [Parameter(ParameterSetName='ConnectOnly')]
         [Switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
@@ -1518,12 +1536,17 @@ Function Install-SOAPrerequisites
     $TranscriptName = "prereq-$(Get-Date -Format "MMddyyyyHHmms")-log.txt"
     Start-Transcript "$SOADirectory\$TranscriptName"
 
-    # Check for later version
-    Write-Host "$(Get-Date) Performing version check.."
-    $VersionCheck = Invoke-SOAVersionCheck
-    If($VersionCheck.Updated -eq $False)
-    {
+    if ($NoVersionCheck) {
+        Write-Host "$(Get-Date) NoVersionCheck switch was used. Skipping version check..."
+    }
+    else {    
+        # Check for later version
+        Write-Host "$(Get-Date) Performing version check..."
+        $VersionCheck = Invoke-SOAVersionCheck
+        If($VersionCheck.Updated -eq $False)
+        {
             Throw "Version $($VersionCheck.Gallery) of the SOA tools have been released. Your version $($VersionCheck.Module) is out of date. Run Update-Module SOA"
+        }
     }
 
     # Check administrator and multiple PowerShell windows
@@ -1597,7 +1620,7 @@ Function Install-SOAPrerequisites
 
     If($UseProxy)
     {
-        Write-Host "Script was ran with UseProxy flag. An attempt will be made to connect through the proxy infrastructure where possible."
+        Write-Host "Script was run with UseProxy flag. An attempt will be made to connect through the proxy infrastructure where possible."
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
     } 
     Else 
@@ -1641,7 +1664,7 @@ Function Install-SOAPrerequisites
 
             Invoke-ModuleFix $Modules_Error
 
-            Write-Host "$(Get-Date) Post remediation pre-requisite check..."
+            Write-Host "$(Get-Date) Post remediation prerequisite check..."
             $ModuleCheckResult = Invoke-SOAModuleCheck
             $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
             $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False})
@@ -1651,7 +1674,8 @@ Function Install-SOAPrerequisites
                 Write-Important
 
                 Write-Host "$(Get-Date) The module check has failed. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
-                Throw "$(Get-Date) The modules must be remediated before continuing. Contact your TAM / or engineer for further information if required. "
+                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
+                Throw "$(Get-Date) The modules above must be remediated before continuing. Contact your CSAM or delivery engineer for further information if required. "
             }
         }
     }
@@ -1821,7 +1845,7 @@ Function Install-SOAPrerequisites
 
     New-Object -TypeName PSObject -Property @{
         Date=$(Get-Date)
-	Version="0.4.6"
+	    Version=(Get-Module SOA).Version.ToString()
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
