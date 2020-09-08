@@ -197,7 +197,7 @@ Function Install-ExchangeModule {
     Write-Host "Depending on your AuthentiCode settings, you may see an 'Application Install - Security Warning'" -ForegroundColor Yellow
     Write-Host "Verify the publisher is Microsoft Corporation and Ensure you select 'Install'" -ForegroundColor Yellow
 
-    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication http://aka.ms/exopspreview"
+    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication https://aka.ms/exopsmodule"
 
     $Installing = $True
     $Installed = $False
@@ -1821,7 +1821,7 @@ Function Install-SOAPrerequisites
 
     New-Object -TypeName PSObject -Property @{
         Date=$(Get-Date)
-	Version="0.4.5"
+	Version="0.4.6"
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
