@@ -197,7 +197,7 @@ Function Install-ExchangeModule {
     Write-Host "Depending on your AuthentiCode settings, you may see an 'Application Install - Security Warning'" -ForegroundColor Yellow
     Write-Host "Verify the publisher is Microsoft Corporation and Ensure you select 'Install'" -ForegroundColor Yellow
 
-    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication http://aka.ms/exomodule"
+    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication http://aka.ms/exopsmodule"
 
     $Installing = $True
     $Installed = $False
