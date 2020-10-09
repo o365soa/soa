@@ -729,7 +729,7 @@ Function Get-ModuleStatus {
 
         # Gallery module
 
-        $InstalledModule = @(Get-Module -ListAvailable | Where-Object {$_.Name -eq $ModuleName})
+        $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable)
 
         ForEach($M in $InstalledModule)
         {
