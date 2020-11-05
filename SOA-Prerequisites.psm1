@@ -4,12 +4,14 @@
 <#
 
 	.SYNOPSIS
-		Pre-requisite check script for Office 365: Security Optimization Assessment
+		Prerequisite validation/installation module for Office 365: Security Optimization Assessment
 
 	.DESCRIPTION
-        Script which can be run in advanced of a Security Optimization Assessment Engagement
+        Contains installation cmdlet which must be run in advance of a Microsoft
+        proactive offering of the Office 365 Security Optimization Assessment
 
-        The output of the script and JSON file can be sent to the engineer performing the engagement.
+        The output of the script (JSON file) should be sent to the engineer who will be performing
+        the assessment.
 
         ############################################################################
         # This sample script is not supported under any Microsoft standard support program or service. 
@@ -686,7 +688,7 @@ Function Get-ModuleStatus {
 
     # Determine if Gallery Module or not
     If($ExtModule_Exchange) {
-        Write-Host "$(Get-Date) Checking module Exchange Online (Non Gallery Module)"
+        Write-Host "$(Get-Date) Checking module Exchange Online (Non-Gallery Module)"
         $GalleryModule = $False
     } Else {      
         Write-Host "$(Get-Date) Checking module $($ModuleName)"
@@ -695,7 +697,7 @@ Function Get-ModuleStatus {
 
     If($GalleryModule -eq $False) {
 
-        # For the Exchange Module, which is not in the Galary
+        # For the Exchange Module, which is not in the Gallery
         If($ExtModule_Exchange) {
             $EXOLoad = Invoke-EXOPSModule
             If($EXOLoad -eq $True) {
@@ -705,7 +707,7 @@ Function Get-ModuleStatus {
                     GalleryVersion=$GalleryVersion
                     Installed=$True
                     Multiple=$False
-                    Updated=$True
+                    NewerAvailable=$false
                 }
             } Else {
                 Return New-Object -TypeName PSObject -Property @{
@@ -714,7 +716,7 @@ Function Get-ModuleStatus {
                     GalleryVersion=$GalleryVersion
                     Installed=$False
                     Multiple=$False
-                    Updated=$True
+                    NewerAvailable=$true
                 }
             }
         }
@@ -727,7 +729,7 @@ Function Get-ModuleStatus {
 
         # Gallery module
 
-        $InstalledModule = @(Get-Module -ListAvailable | Where-Object {$_.Name -eq $ModuleName})
+        $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable)
 
         ForEach($M in $InstalledModule)
         {
@@ -751,13 +753,13 @@ Function Get-ModuleStatus {
         If($PSGalleryModule.Count -eq 1) {
             $GalleryVersion = $PSGalleryModule.Version
             If($GalleryVersion -gt $InstalledModule.Version) {
-                $Updated = $False
+                $NewerAvailable = $true
             } Else {
-                $Updated = $True
+                $NewerAvailable = $false
             }
         }
 
-        Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Verdict Installed $($Installed) InstalledV $($InstalledModule.Version) GalleryV $($GalleryVersion) Multiple $($Multiple) Updated $($Updated)"
+        Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Verdict Installed $($Installed) InstalledV $($InstalledModule.Version) GalleryV $($GalleryVersion) Multiple $($Multiple) NewerAvailable $($NewerAvailable)"
 
         Return New-Object -TypeName PSObject -Property @{
             Module=$ModuleName
@@ -766,7 +768,7 @@ Function Get-ModuleStatus {
             Installed=$Installed
             Conflict=$(If($Installed -and $ConflictModule) { $True } Else { $False })
             Multiple=$MultipleFound
-            Updated=$Updated
+            NewerAvailable=$NewerAvailable
         }
 
     }
@@ -919,8 +921,8 @@ Function Invoke-ModuleFix {
     If(Get-IsAdministrator -eq $True) {
 
         # Administrator so can remediate
-        $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.Updated -eq $False -and $_.Conflict -ne $True}
-        $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True -and $_.Updated -eq $True}
+        $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
+        $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True -and $_.NewerAvailable -eq $true}
         $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $Null -ne $_.GalleryVersion }
         $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
 
@@ -988,7 +990,7 @@ Function Get-ManualModules
 {
     <#
     
-    Determines if there are any manual module installs as opposed to PowerShell gallery installs
+    Determines if there are any manual module installs as opposed to PowerShell Gallery installs
     
     #>
     Param(
@@ -1034,7 +1036,7 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "SharePointPnPPowerShellOnline","Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Skype") {$RequiredModules += "SkypeOnlineConnector"}
-    if ($Bypass -notcontains "Exchange" -and $UseEXOv2Module) {$RequiredModules += "ExchangeOnlineManagement"}
+    if (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") -and (-not($UseEXOv1Module))) {$RequiredModules += "ExchangeOnlineManagement"}
 
     $ModuleCheckResult = @()
 
@@ -1049,7 +1051,7 @@ Function Invoke-SOAModuleCheck {
         }
     }
 
-    if ($UseEXOv2Module -eq $false) {
+    if ($UseEXOv1Module) {
         If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
             $ModuleCheckResult += (Get-ModuleStatus -ExtModule_Exchange)
         }
@@ -1364,23 +1366,26 @@ Function Invoke-ManualModuleCheck
         If($ManualInstalls -gt 0)
         {
 
-            Write-Host "$(Get-Date) Modules manually installed that need to be removed"
+            Write-Host "$(Get-Date) Modules manually installed that need to be removed:"
             $ManualInstalls
 
-            If($Remediate) 
-            {
+            If($DoNotRemediate -eq $false){
                 # Fix manual installs
                 $ManualInstalls = Get-ManualModules -Remediate
+            }
+            else {
+                $ManualInstalls = Get-ManualModules
             }
 
             If($ManualInstalls.Count -gt 0)
             {
                 Write-Important
 
-                Write-Host "$(Get-Date) The module check has failed as some modules have been manually installed. These will conflict with newer, required modules from the PowerShell Gallery." -ForegroundColor Red
+                Write-Host "$(Get-Date) The module check has failed because some modules have been manually installed. These will conflict with newer required modules from the PowerShell Gallery." -ForegroundColor Red
 
-                Throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. Removal using Add/Remove programs is necessary."
-
+                if ($DoNotRemediate -eq $false) {
+                    Throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. You must remove them using Add/Remove Programs."
+                }
             }
         }
 }
@@ -1398,17 +1403,17 @@ Function Invoke-SOAVersionCheck
 
     If($SOAGallery.Version -gt $SOAModule.Version) 
     {
-        $Updated = $False
+        $NewerAvailable = $True
     }
     else
     {
-        $Updated = $True
+        $NewerAvailable = $False
     }
 
-    Write-Verbose "$(Get-Date) Invoke-SOAVersionCheck Updated $Updated Gallery $($SOAGallery.Version) Module $($SOAModule.Version)"
+    Write-Verbose "$(Get-Date) Invoke-SOAVersionCheck NewerAvailable $NewerAvailable Gallery $($SOAGallery.Version) Module $($SOAModule.Version)"
 
     Return New-Object -TypeName PSObject -Property @{
-        Updated = $Updated
+        NewerAvailable = $NewerAvailable
         Gallery = $SOAGallery.Version
         Module = $SOAModule.Version
     }
@@ -1423,11 +1428,12 @@ Function Get-SOAGraphApp
 
     If(!$GraphApp) 
     {
-        Write-Host "$(Get-Date) Installing Graph Application..."
-        $GraphApp = Install-GraphApp
+        if ($DoNotRemediate -eq $false) {
+            Write-Host "$(Get-Date) Installing Graph Application..."
+            $GraphApp = Install-GraphApp
+            Write-Verbose "$(Get-Date) Get-SOAGraphApp App $($GraphApp.ObjectId)"
+        }
     }
-
-    Write-Verbose "$(Get-Date) Get-SOAGraphApp App $($GraphApp.ObjectId)"
 
     Return $GraphApp
 
@@ -1449,7 +1455,7 @@ Function Test-SOAApplication
     Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length)"
 
     # Perform permission check
-    If($WriteHost) { Write-Host "$(Get-Date) Performing Application Permission Check... (This may take up to 5 minutes)" }
+    If($WriteHost) { Write-Host "$(Get-Date) Performing application permission check... (This may take up to 5 minutes)" }
     $PermCheck = Invoke-AppPermissionCheck -App $App
 
     # Perform check for consent
@@ -1475,9 +1481,13 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='ModulesOnly')]
         $Bypass=@(),
         [Switch]$UseProxy,
-        [switch]$UseEXOv2Module,
+        [switch]$UseEXOv1Module,
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ModulesOnly')]
+    [Parameter(ParameterSetName='GraphOnly')]
+        [switch]$DoNotRemediate,
     [Parameter(ParameterSetName='ConnectOnly')]
         [Switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
@@ -1503,8 +1513,14 @@ Function Install-SOAPrerequisites
     $ModuleCheck = $True
     $GraphCheck = $True
 
-    # Remediate true now
-    $Remediate = $True
+    # Default to remediate (applicable only when not using ConnectOnly)
+    if ($DoNotRemediate -eq $false){
+        $Remediate = $true
+    }
+    else {
+        $Remediate = $false
+    }
+    
 
     # Change based on ModuleOnly flag
     If($ModulesOnly) {
@@ -1536,22 +1552,26 @@ Function Install-SOAPrerequisites
     $TranscriptName = "prereq-$(Get-Date -Format "MMddyyyyHHmms")-log.txt"
     Start-Transcript "$SOADirectory\$TranscriptName"
 
+    if ($DoNotRemediate){
+        Write-Host "$(Get-Date) The DoNotRemediate switch was used.  Any missing, outdated, or duplicate modules, as well as the registration and/or configuration of the Azure AD application will not be performed." -ForegroundColor Yellow
+    }
+
     if ($NoVersionCheck) {
         Write-Host "$(Get-Date) NoVersionCheck switch was used. Skipping version check..."
     }
     else {    
-        # Check for later version
+        # Check for newer version
         Write-Host "$(Get-Date) Performing version check..."
         $VersionCheck = Invoke-SOAVersionCheck
-        If($VersionCheck.Updated -eq $False)
+        If($VersionCheck.NewerAvailable -eq $true)
         {
-            Throw "Version $($VersionCheck.Gallery) of the SOA tools have been released. Your version $($VersionCheck.Module) is out of date. Run Update-Module SOA"
+            Throw "Version $($VersionCheck.Gallery) of the SOA module has been released. Your version $($VersionCheck.Module) is out of date. Run Update-Module SOA."
         }
     }
 
     # Check administrator and multiple PowerShell windows
-    If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True) {
-        Throw "PowerShell must be run as Administrator in order to Install-SOAPrerequisites"
+    If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True -and $DoNotRemediate -eq $false) {
+        Throw "PowerShell must be run as Administrator in order to allow for any changes when running Install-SOAPrerequisites"
     }
     If($AllowMultipleWindows) {
         Write-Important
@@ -1559,8 +1579,8 @@ Function Install-SOAPrerequisites
     } 
     Else 
     {
-        If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True) {
-            Throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell modules, and start with a clean PowerShell window running as administrator."
+        If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True -and $DoNotRemediate -eq $false) {
+            Throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell windows and start with a clean PowerShell window running as Administrator."
         }
     }
 
@@ -1576,36 +1596,37 @@ Function Install-SOAPrerequisites
 
     #>
 
-    Write-Host "###################################################" -ForegroundColor Green
-    Write-Host "# Security Optimization Assessment Pre-requisites #" -ForegroundColor Green
-    Write-Host "###################################################" -ForegroundColor Green
+    Write-Host "#############################################################" -ForegroundColor Green
+    Write-Host "# Office 365 Security Optimization Assessment Prerequisites #" -ForegroundColor Green
+    Write-Host "#############################################################" -ForegroundColor Green
     Write-Host ""
 
-    Write-Host "The purpose of this command is to install and check the pre-requisites for performing a Security Optimization Assessment engagement."
-    Write-Host "At the conclusion of running this command successfully, a file SOA-PreCheck.json will be generated."
-    Write-Host "This file should be sent to the engineer performing the engagement prior to the first day."
+    Write-Host "The purpose of this cmdlet (script) is to install and check the prerequisites for running the data collection"
+    Write-Host "script for the Office 365 Security Optimization Assessment, a Microsoft Support proactive offering."
+    Write-Host "At the conclusion of this cmdlet running successfully, a file named SOA-PreCheck.json will be generated."
+    Write-Host "This file should be sent, prior to the first day of the engagement, to the engineer who will be delivering the assessment."
     Write-Host ""
-    Write-Host "This command MUST be run on the workstation that will be used for performing the collection on Day 1"
+    Write-Host "This cmdlet MUST be run on the workstation that will be used to perform the data collection on Day 1 of the assessment."
     Write-Host ""
 
     Write-Important
 
-    Write-Host "This command makes changes.. the following will occurr" -ForegroundColor Green
-    Write-Host "1. Updates to required PowerShell modules installed on this machine" -ForegroundColor Green
-    Write-Host "2. Installation of PowerShell modules required for this engagement" -ForegroundColor Green
-    Write-Host "3. Installation of an Azure AD Application." -ForegroundColor Green
+    Write-Host "This cmdlet makes changes on this workstation and in your Office 365 tenant (unless DoNotRemediate was used). The following will occur:" -ForegroundColor Green
+    Write-Host "1. Update any existing PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
+    Write-Host "2. Install any PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
+    Write-Host "3. Install/register an Azure AD application in your tenant:" -ForegroundColor Green
     Write-Host "    -- The application name is 'Office 365 Security Optimization Assessment" -ForegroundColor Green
-    Write-Host "    -- The application will not be visible to end-users" -ForegroundColor Green
-    Write-Host "    -- The application secret will not be stored, is randomly generated, and is removed at the conclusion of this script." -ForegroundColor Green
-    Write-Host "    -- The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement." -ForegroundColor Green
+    Write-Host "    -- The application will not be visible to end users" -ForegroundColor Green
+    Write-Host "    -- The application secret (password) will not be stored, is randomly generated, and is removed when this cmdlet completes." -ForegroundColor Green
+    Write-Host "       (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
     Write-Host "4. The computer may restart during this process" -ForegroundColor Green
 
     Write-Host ""
 
     While($True) {
-        $rhInput = Read-Host "Is this being run on the machine that will be used for collection, are you aware of the changes above, and do you want to proceed (y/n)"
+        $rhInput = Read-Host "Is this cmdlet being run on the machine that will be used for collection, are you aware of the potential changes above, and do you want to proceed (y/n)"
         if($rhInput -eq "n") {
-            Throw "Run Install-SOAPrerequisites from the machine that you will perform the collection."
+            Throw "Run Install-SOAPrerequisites on the machine that will be performing the data collection."
         } elseif($rhInput -eq "y") {
             Write-Host ""
             break;
@@ -1620,12 +1641,12 @@ Function Install-SOAPrerequisites
 
     If($UseProxy)
     {
-        Write-Host "Script was run with UseProxy flag. An attempt will be made to connect through the proxy infrastructure where possible."
+        Write-Host "The UseProxy switch was used. An attempt will be made to connect through the proxy infrastructure where possible."
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
     } 
     Else 
     {
-        Write-Host "Proxy requirement was not specified with -UseProxy. Connection will be attempted direct."
+        Write-Host "Proxy requirement was not specified with UseProxy. Connection will be attempted directly."
         Write-Host ""
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
     }
@@ -1655,27 +1676,29 @@ Function Install-SOAPrerequisites
 
         $ModuleCheckResult = Invoke-SOAModuleCheck
 
-        $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
-        $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False -or $_.Conflict -eq $True})
+        $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
+        $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true -or $_.Conflict -eq $True})
 
         If($Modules_Error.Count -gt 0) {
             Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
+            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
 
-            Invoke-ModuleFix $Modules_Error
+            # Fix modules with errors unless instructed not to
+            if ($DoNotRemediate -eq $false){
+                Invoke-ModuleFix $Modules_Error
 
-            Write-Host "$(Get-Date) Post remediation prerequisite check..."
-            $ModuleCheckResult = Invoke-SOAModuleCheck
-            $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.Updated -ne $False})
-            $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.Updated -eq $False})
-
+                Write-Host "$(Get-Date) Post-remediation prerequisites check..."
+                $ModuleCheckResult = Invoke-SOAModuleCheck
+                $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
+                $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true})
+            }
             # Don't continue to check connections, still modules with errors
             If($Modules_Error.Count -gt 0) {
                 Write-Important
 
-                Write-Host "$(Get-Date) The module check has failed. The connection check will not proceed until the module check has been completed." -ForegroundColor Red
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
-                Throw "$(Get-Date) The modules above must be remediated before continuing. Contact your CSAM or delivery engineer for further information if required. "
+                Write-Host "$(Get-Date) The module check has errors. The connection check will not proceed until the module check has no errors." -ForegroundColor Red
+                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+                Throw "$(Get-Date) The modules above must be remediated before continuing. Contact your CSAM or delivery engineer for further information as needed. "
             }
         }
     }
@@ -1736,10 +1759,10 @@ Function Install-SOAPrerequisites
             $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
                 
             # Graph Permission - Perform remediation if specified
-            If($AppTest.Permissions -eq $False)
+            If($AppTest.Permissions -eq $False -and $DoNotRemediate -eq $false)
             {
                 # Set up the correct Graph Permissions
-                Write-Host "$(Get-Date) Remediating Application Permissions..."
+                Write-Host "$(Get-Date) Remediating application permissions..."
                 If((Set-GraphPermission -App $GraphApp -Roles $AppRoles -PerformConsent:$True) -eq $True) {
                     # Perform check again after setting permissions
                     $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
@@ -1748,15 +1771,17 @@ Function Install-SOAPrerequisites
 
             If($AppTest.Token -eq $False)
             {
-                Write-Host "$(Get-Date) Missing roles in token, possible that consent was not completed..."
-                # Requst admin consent
-                If((Invoke-Consent -App $GraphApp) -eq $True) {
-                    # Perform check again after consent
-                    $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
-                }                
+                Write-Host "$(Get-Date) Missing roles in access token; possible that consent was not completed..."
+                if ($DoNotRemediate -eq $false) {
+                    # Request admin consent
+                    If((Invoke-Consent -App $GraphApp) -eq $True) {
+                        # Perform check again after consent
+                        $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
+                    }
+                }
             }
 
-            # Add final result to checkresults
+            # Add final result to checkresults object
             $CheckResults += New-Object -Type PSObject -Property @{
                 Check="Graph Permissions"
                 Pass=$AppTest.Permissions
@@ -1788,12 +1813,12 @@ Function Install-SOAPrerequisites
     {
 
         Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
-        $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,Updated
+        $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,NewerAvailable
         
         If($Modules_Error.Count -gt 0) 
         {
             Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,Updated
+            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
 
             $CheckResults += New-Object -TypeName PSObject -Property @{
                 Check="Module Installation"
@@ -1853,14 +1878,14 @@ Function Install-SOAPrerequisites
         ConnectionsError=$Connections_Error
     } | ConvertTo-Json | Out-File SOA-PreCheck.json
 
-    Write-Host "$(Get-Date) Output sent to SOA-PreCheck.json which should be sent to the engineer performing the assessment."
+    Write-Host "$(Get-Date) Output saved to SOA-PreCheck.json which should be sent to the engineer who will be performing the assessment."
     $CurrentDir = Get-Location 
     Write-Host "$(Get-Date) SOA-PreCheck.json is located in: " -NoNewline
     Write-Host "$CurrentDir" -ForegroundColor Yellow
     Write-Host ""
 
     While($True) {
-        $rhInput = Read-Host "Type 'yes' when you have sent the SOA-PreCheck.json file to the engineer running the assessment."
+        $rhInput = Read-Host "Type 'yes' when you have sent the SOA-PreCheck.json file to the engineer who will be performing the assessment."
         if($rhInput -eq "yes") {
             break;
         }
