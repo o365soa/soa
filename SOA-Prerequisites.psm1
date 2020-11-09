@@ -950,7 +950,7 @@ Function Invoke-ModuleFix {
         }
 
         # Exchange check
-        if ($UseEXOv2Module -eq $false) {
+        if ($UseEXOv1Module -eq $true) {
             If($Modules | Where-Object {$_.Module -eq "Exchange Online" -and $_.Installed -eq $False}) {
                 Install-ExchangeModule | Out-Null
             }
@@ -1067,7 +1067,7 @@ Function Test-Connections {
 
     $Connections = @()
 
-    if ($UseEXOv2Module -eq $false -and ($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {
+    if ($UseEXOv1Module -eq $true -and ($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {
         # Unfortunately, this code has to be duplicated in order to bring this in to the same context as this function
         $CurrentPath = Get-Location
 
@@ -1151,7 +1151,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        if ($UseEXOv2Module) {
+        if ($UseEXOv1Module -eq $false) {
             ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
         }
         else {
@@ -1186,7 +1186,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        if ($UseEXOv2Module) {
+        if ($UseEXOv1Module -eq $false) {
             Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
         }
         else {
