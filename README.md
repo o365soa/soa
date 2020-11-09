@@ -11,7 +11,7 @@ Prerequisite installation is simplified by the use of a PowerShell prerequisite 
 The following prerequsites are installed, or updated by the prerequisite installation script:
 * Azure AD MSOnline (v1) PowerShell module
 * Azure AD (v2) Preview PowerShell module
-* Exchange Online (v1) PowerShell module
+* Exchange Online (v2) PowerShell module
 * SharePoint Online PowerShell module
 * SharePoint PNP PowerShell module
 * Skype for Business Online PowerShell module
