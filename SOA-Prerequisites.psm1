@@ -1330,16 +1330,11 @@ Function Get-RequiredAppPermissions
         Name="Directory.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-    <#
-        Commented out as currently Conditional Access cant be pulled using Application Permissions
-        This will need to be moved to delegated permissions.
-        
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="246dd0d5-5bd0-4def-940b-0421030a5b68"
         Name="Policy.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-    #>
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="d13f72ca-a275-4b96-b789-48ebcc4da984"
         Name="Sites.Read.All"
