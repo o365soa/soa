@@ -37,6 +37,11 @@ Function Get-IsAdministrator {
     Return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
+Function Exit-Script {
+    Stop-Transcript
+    exit
+}
+
 Function Get-PowerShellCount
 {
     <#
@@ -172,77 +177,6 @@ Function Install-SkypeConnector {
         }
 
     } While ($Installed -eq $False -or $Wait -ge $MaxWait)
-
-    Return $Installed
-
-}
-
-Function Install-ExchangeModule {
-    <#
-    
-        Automates the Exchange Module Deployment
-
-        NOTE: This is a bit of a hack, considering there is no good way to automate
-        ClickOnce deployments.
-
-    #>
-
-    # Run the click once shim to deploy the app
-
-    Write-Host "$(Get-Date) Installing Exchange ClickOnce"
-
-    Write-Host ""
-    Write-Important
-    Write-Host ""
-    Write-Host "Exchange Online Module Installation will now be triggered" -ForegroundColor Yellow
-    Write-Host
-    Write-Host "Depending on your AuthentiCode settings, you may see an 'Application Install - Security Warning'" -ForegroundColor Yellow
-    Write-Host "Verify the publisher is Microsoft Corporation and Ensure you select 'Install'" -ForegroundColor Yellow
-
-    Invoke-Expression "rundll32.exe dfshim.dll,ShOpenVerbApplication https://aka.ms/exopsmodule"
-
-    $Installing = $True
-    $Installed = $False
-    
-    <#
-        FLUFF
-        These configure how long we will try sit and wait for the installation to complete
-        Because we can't really 'tell' programatically when the ClickOnce deployment is complete
-        We need to sit back and monitor the process and see if its closed
-    #>
-    $Fluff = 0
-    $MaxFluff = 10
-
-    $psids = (get-process |where-object {$_.name -eq 'powershell'}).id
-
-    While($Installing -eq $True) {
-        Start-Sleep 1
-        $dfsvcTitle = (Get-Process | Where-Object {$_.Name -eq "dfsvc"}).Mainwindowtitle
-
-        if($dfsvcTitle -eq "Application Install - Security Warning") {
-            Write-Host "Waiting for your approval, change to the window labelled '$dfsvcTitle'"
-            Start-Sleep 10
-        }
-
-        if($dfsvcTitle -like "*Installing Microsoft Exchange*") {
-            Write-Host "$dfsvcTitle"
-        }
-
-        if($dfsvcTitle -eq "") {
-            $Fluff++
-            $NewPSIDs = @(Compare-Object -ReferenceObject $psids -DifferenceObject (get-process |where-object {$_.name -eq 'powershell'}).id |Where-Object {$_.SideIndicator -eq "=>"}).InputObject
-            If($NewPSIDs.Count -gt 0) {
-                Stop-Process $NewPSIDs -ErrorAction:SilentlyContinue | Out-Null
-                $Installed = $True
-                $Installing = $False
-            }
-            If($Fluff -eq $MaxFluff) {
-                # This is to stop an infinite loop and also a false positive when dfsvc doesnt have a window title (not doing anything?)
-                $Installing = $False
-            }
-
-        }
-    }
 
     Return $Installed
 
@@ -679,141 +613,58 @@ Function Get-ModuleStatus {
     
     #>
     Param (
-        [Parameter(ParameterSetName='ExternalModules')]
-            [Switch]$ExtModule_Exchange,
-        [Parameter(ParameterSetName='GalleryModules')]
-            [String]$ModuleName,
-            [Switch]$ConflictModule
+        [String]$ModuleName,
+        [Switch]$ConflictModule
     )
 
-    # Determine if Gallery Module or not
-    If($ExtModule_Exchange) {
-        Write-Host "$(Get-Date) Checking module Exchange Online (Non-Gallery Module)"
-        $GalleryModule = $False
-    } Else {      
-        Write-Host "$(Get-Date) Checking module $($ModuleName)"
-        $GalleryModule = $True
+    Write-Host "$(Get-Date) Checking module $($ModuleName)"
+
+    # Set variables used
+    $MultipleFound = $False
+    $Installed = $False
+
+    $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable)
+
+    ForEach($M in $InstalledModule)
+    {
+        Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Version $($M.Version.ToString()) Path $($M.Path)"
     }
 
-    If($GalleryModule -eq $False) {
+    If($InstalledModule.Count -gt 1) {
+        # More than one module, flag this
+        $MultipleFound = $True
+        $Installed = $True
 
-        # For the Exchange Module, which is not in the Gallery
-        If($ExtModule_Exchange) {
-            $EXOLoad = Invoke-EXOPSModule
-            If($EXOLoad -eq $True) {
-                Return New-Object -TypeName PSObject -Property @{
-                    Module="Exchange Online"
-                    InstalledVersion=$InstalledModule.Version
-                    GalleryVersion=$GalleryVersion
-                    Installed=$True
-                    Multiple=$False
-                    NewerAvailable=$false
-                }
-            } Else {
-                Return New-Object -TypeName PSObject -Property @{
-                    Module="Exchange Online"
-                    InstalledVersion=$InstalledModule.Version
-                    GalleryVersion=$GalleryVersion
-                    Installed=$False
-                    Multiple=$False
-                    NewerAvailable=$true
-                }
-            }
-        }
-
-    } Else {
-
-        # Set variables used
-        $MultipleFound = $False
-        $Installed = $False
-
-        # Gallery module
-
-        $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable)
-
-        ForEach($M in $InstalledModule)
-        {
-            Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Version $($M.Version.ToString()) Path $($M.Path)"
-        }
-
-        If($InstalledModule.Count -gt 1) {
-            # More than one module, flag this
-            $MultipleFound = $True
-            $Installed = $True
-
-            # Use the latest for comparisons
-            $InstalledModule = ($InstalledModule | Sort-Object Version -Desc)[0]
-        } ElseIf($InstalledModule.Count -eq 1) {
-            # Only one installed
-            $Installed = $True
-        }
-
-        # Check version in PS Gallery
-        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
-        If($PSGalleryModule.Count -eq 1) {
-            $GalleryVersion = $PSGalleryModule.Version
-            If($GalleryVersion -gt $InstalledModule.Version) {
-                $NewerAvailable = $true
-            } Else {
-                $NewerAvailable = $false
-            }
-        }
-
-        Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Verdict Installed $($Installed) InstalledV $($InstalledModule.Version) GalleryV $($GalleryVersion) Multiple $($Multiple) NewerAvailable $($NewerAvailable)"
-
-        Return New-Object -TypeName PSObject -Property @{
-            Module=$ModuleName
-            InstalledVersion=$InstalledModule.Version
-            GalleryVersion=$GalleryVersion
-            Installed=$Installed
-            Conflict=$(If($Installed -and $ConflictModule) { $True } Else { $False })
-            Multiple=$MultipleFound
-            NewerAvailable=$NewerAvailable
-        }
-
+        # Use the latest for comparisons
+        $InstalledModule = ($InstalledModule | Sort-Object Version -Desc)[0]
+    } ElseIf($InstalledModule.Count -eq 1) {
+        # Only one installed
+        $Installed = $True
     }
-    
-}
 
-Function Invoke-EXOPSModule {
-    <#
-    
-        Attempts to load the Exchange Online Module
-
-    #>
-    # Module changes the root path, so we want to change back after.
-    $CurrentPath = Get-Location
-
-    # Determine Apps folder exists, if it doesn't then it hasnt been installed before we check..
-    If($(Test-Path "$($env:LOCALAPPDATA)\Apps\2.0") -eq $True) {
-        $modules = @(Get-ChildItem -Path "$($env:LOCALAPPDATA)\Apps\2.0" -Filter "Microsoft.Exchange.Management.ExoPowershellModule.manifest" -Recurse )
-        
-        If($Modules.Count -gt 0) {
-            $moduleName =  Join-Path $modules[0].Directory.FullName "Microsoft.Exchange.Management.ExoPowershellModule.dll"
-            Import-Module -FullyQualifiedName $moduleName -Force 2>&1 | Out-Null
-            $scriptName =  Join-Path $modules[0].Directory.FullName "CreateExoPSSession.ps1"
-            . $scriptName 2>&1 | Out-Null
-        
-            If(!(Get-Command "Connect-EXOPSSession" -ErrorAction:SilentlyContinue)) {
-
-                $Return = $False
-            } Else {
-        
-                $Return = $True
-        
-            }
+    # Check version in PS Gallery
+    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    If($PSGalleryModule.Count -eq 1) {
+        [version]$GalleryVersion = $PSGalleryModule.Version
+        If($GalleryVersion -gt $InstalledModule.Version) {
+            $NewerAvailable = $true
         } Else {
-            $Return = $False
+            $NewerAvailable = $false
         }
-
-    } Else {
-        $Return = $False
     }
 
-    Set-Location $CurrentPath
-    Return $Return
+    Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Verdict Installed $($Installed) InstalledV $($InstalledModule.Version) GalleryV $($GalleryVersion) Multiple $($Multiple) NewerAvailable $($NewerAvailable)"
 
-
+    Return New-Object -TypeName PSObject -Property @{
+        Module=$ModuleName
+        InstalledVersion=$InstalledModule.Version
+        GalleryVersion=$GalleryVersion
+        Installed=$Installed
+        Conflict=$(If($Installed -and $ConflictModule) { $True } Else { $False })
+        Multiple=$MultipleFound
+        NewerAvailable=$NewerAvailable
+    }
+  
 }
 
 Function Uninstall-OldModules {
@@ -936,24 +787,17 @@ Function Invoke-ModuleFix {
                     Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
                 } Catch {
                     Write-Error "$(Get-Date) Could not trust PSGallery due to error"
-                    Exit
+                    Exit-Script
                 }
             }
         } Else {
             Write-Error "PSGallery is not present on this host, so modules cannot be remediated."
-            Exit
+            Exit-Script
         }
 
         # Skype check
         If($Modules | Where-Object {$_.Module -eq "SkypeOnlineConnector" -and $_.Installed -eq $False}) {
             Install-SkypeConnector
-        }
-
-        # Exchange check
-        if ($UseEXOv1Module -eq $true) {
-            If($Modules | Where-Object {$_.Module -eq "Exchange Online" -and $_.Installed -eq $False}) {
-                Install-ExchangeModule | Out-Null
-            }
         }
 
         # Conflict modules, need to be removed
@@ -1036,7 +880,7 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "SharePointPnPPowerShellOnline","Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Skype") {$RequiredModules += "SkypeOnlineConnector"}
-    if (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") -and (-not($UseEXOv1Module))) {$RequiredModules += "ExchangeOnlineManagement"}
+    if (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
 
     $ModuleCheckResult = @()
 
@@ -1051,12 +895,6 @@ Function Invoke-SOAModuleCheck {
         }
     }
 
-    if ($UseEXOv1Module) {
-        If($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC") {
-            $ModuleCheckResult += (Get-ModuleStatus -ExtModule_Exchange)
-        }
-    }
-
     Return $ModuleCheckResult
 }
 
@@ -1066,20 +904,6 @@ Function Test-Connections {
     )
 
     $Connections = @()
-
-    if ($UseEXOv1Module -eq $true -and ($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {
-        # Unfortunately, this code has to be duplicated in order to bring this in to the same context as this function
-        $CurrentPath = Get-Location
-
-        $modules = @(Get-ChildItem -Path "$($env:LOCALAPPDATA)\Apps\2.0" -Filter "Microsoft.Exchange.Management.ExoPowershellModule.manifest" -Recurse )
-        $moduleName =  Join-Path $modules[0].Directory.FullName "Microsoft.Exchange.Management.ExoPowershellModule.dll"
-        Import-Module -FullyQualifiedName $moduleName -Force 2>&1 | Out-Null
-        $scriptName =  Join-Path $modules[0].Directory.FullName "CreateExoPSSession.ps1"
-        . $scriptName 2>&1 | Out-Null
-        Set-Location $CurrentPath
-
-        # Now connect code can start
-    }
 
     Write-Host "$(Get-Date) Connecting..."
 
@@ -1151,12 +975,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        if ($UseEXOv1Module -eq $false) {
-            ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
-        }
-        else {
-            Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
-        }
+        ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
 
         If((Get-PSSession | Where-Object {$_.ComputerName -like "*protection.outlook.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
@@ -1186,13 +1005,8 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        if ($UseEXOv1Module -eq $false) {
-            Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
-        }
-        else {
-            Connect-EXOPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
-        }
-        
+        Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null
+       
         If((Get-PSSession | Where-Object {$_.ComputerName -eq "outlook.office365.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
         # Run test command
@@ -1476,7 +1290,6 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='ModulesOnly')]
         $Bypass=@(),
         [Switch]$UseProxy,
-        [switch]$UseEXOv1Module,
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
     [Parameter(ParameterSetName='Default')]
