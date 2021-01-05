@@ -1315,6 +1315,12 @@ Function Install-SOAPrerequisites
         {
         throw "Running this script in the PowerShell ISE is not supported."
         }
+
+    # Detect if running in PS 7
+    # EXO 2.0.3, Teams, MSOnline modules do not support PS 7
+    if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
+        throw "Running this script in PowerShell 7 is not supported."
+    }
     
     # Default run
     $ConnectCheck = $True
