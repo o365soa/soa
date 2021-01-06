@@ -122,66 +122,6 @@ function Get-SharePointAdminUrl
     return $url
 }
 
-Function Install-SkypeConnector {
-    <#
-    
-        This function installs the Skype Connector. It is only used when Remediate flag is specified.
-
-    #>
-
-    Write-Host "$(Get-Date) Installing Skype Online Connector"
-
-    $SkypeDownload = "https://download.microsoft.com/download/2/0/5/2050B39B-4DA5-48E0-B768-583533B42C3B/SkypeOnlinePowerShell.Exe"
-    $VCDownload = "https://aka.ms/vs/16/release/vc_redist.x64.exe"
-
-    $TempPath = New-TemporaryDirectory
-
-    # Download Visual C Runtime
-    Write-Host "$(Get-Date) Downloading Visual C Runtimes"
-    Invoke-WebRequest -Uri $VCDownload -OutFile "$TempPath\VC_redist.x64.exe"
-#
-    # Download Skype Connector
-    Write-Host "$(Get-Date) Downloading Skype Online Installer"
-    Invoke-WebRequest -Uri $SkypeDownload -OutFile "$TempPath\SkypeOnlinePowerShell.Exe"
-
-    # Attempt to install Visual C Runtime
-    Write-Host "$(Get-Date) Running Visual C Runtime Installation"
-    Start-Process -FilePath "$TempPath\VC_redist.x64.exe" -ArgumentList "/passive" -Wait -Passthru | Out-Null
-
-    # Attempt to install
-    Write-Host "$(Get-Date) Running Skype Online Installation"
-    & "$TempPath\SkypeOnlinePowerShell.Exe" /install /passive
-
-    # Wait for task to finish
-    $Installed = $False
-    $MaxWait = 24 # Maximum wait time x * 5 seconds
-    $Wait = 0
-
-    Do {
-        $Wait++;
-        Start-Sleep 5
-
-        $p = Get-Process | Where-Object {$_.Name -eq "SkypeOnlinePowerShell"}
-
-        # If p count is 0 then installer finished
-        If($p.Count -eq 0) {
-            # Make a check to determine if we are probably installed
-            If(Test-Path "C:\Program Files\Common Files\Skype for Business Online\Modules\SkypeOnlineConnector\SkypeOnlineConnector.psd1") {
-                $Installed = $True
-                # Reload the PSEnvPath
-                $env:PSModulePath = [System.Environment]::GetEnvironmentVariable("PSModulePath","Machine")
-            } Else {
-                Write-Error "Skype installer has finished, but it doesn't appear to have installed the Skype Module.."
-                break
-            }
-        }
-
-    } While ($Installed -eq $False -or $Wait -ge $MaxWait)
-
-    Return $Installed
-
-}
-
 Function Reset-AppSecret {
     <#
     
@@ -773,7 +713,7 @@ Function Invoke-ModuleFix {
 
         # Administrator so can remediate
         $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
-        $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True -and $_.NewerAvailable -eq $true}
+        $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True}
         $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $Null -ne $_.GalleryVersion }
         $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
 
@@ -793,11 +733,6 @@ Function Invoke-ModuleFix {
         } Else {
             Write-Error "PSGallery is not present on this host, so modules cannot be remediated."
             Exit-Script
-        }
-
-        # Skype check
-        If($Modules | Where-Object {$_.Module -eq "SkypeOnlineConnector" -and $_.Installed -eq $False}) {
-            Install-SkypeConnector
         }
 
         # Conflict modules, need to be removed
@@ -879,7 +814,7 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "AAD") { $RequiredModules += "AzureADPreview" }
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "SharePointPnPPowerShellOnline","Microsoft.Online.SharePoint.PowerShell" }
-    If($Bypass -notcontains "Skype") {$RequiredModules += "SkypeOnlineConnector"}
+    If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
     if (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
 
     $ModuleCheckResult = @()
@@ -1060,16 +995,17 @@ Function Test-Connections {
     
     <#
     
-        Skype for Business Online
+        Microsoft Teams (includes Skype for Business Online)
     
     #>
-    If($Bypass -notcontains "Skype") {
+    If($Bypass -notcontains "Teams") {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Skype..."
+        Write-Host "$(Get-Date) Connecting to Skype (via Microsoft Teams module)..."
         $SfBOAdminDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
-        $SfBOSession = New-CsOnlineSession -OverrideAdminDomain $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue -SessionOption $RPSProxySetting
+        # Explicitly reference New-CsOnlineSession in the Teams modules to ensure the cmdlet in the SfBo module is not used
+        $SfBOSession = MicrosoftTeams\New-CsOnlineSession -OverrideAdminDomain $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue -SessionOption $RPSProxySetting
 
         If($SfBOSession.State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
@@ -1087,7 +1023,7 @@ Function Test-Connections {
         }
 
         $Connections += New-Object -TypeName PSObject -Property @{
-            Name="Skype"
+            Name="Teams"
             Connected=$Connect
             ConnectErrors=$ConnectError
             TestCommand=$Command
@@ -1207,8 +1143,8 @@ Function Invoke-SOAVersionCheck
     
     #>
 
-    $SOAGallery = (Find-Module SOA)
-    $SOAModule = (Get-Module -ListAvailable SOA | Sort-Object Version -Desc)[0]
+    $SOAGallery = Find-Module SOA
+    $SOAModule = Get-Module SOA
 
     If($SOAGallery.Version -gt $SOAModule.Version) 
     {
@@ -1427,8 +1363,6 @@ Function Install-SOAPrerequisites
     Write-Host "    -- The application will not be visible to end users" -ForegroundColor Green
     Write-Host "    -- The application secret (password) will not be stored, is randomly generated, and is removed when this cmdlet completes." -ForegroundColor Green
     Write-Host "       (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
-    Write-Host "4. The computer may restart during this process" -ForegroundColor Green
-
     Write-Host ""
 
     While($True) {
@@ -1677,7 +1611,7 @@ Function Install-SOAPrerequisites
     $CheckResults | Format-Table Check,Pass
 
     New-Object -TypeName PSObject -Property @{
-        Date=$(Get-Date)
+        Date=(Get-Date).DateTime
 	    Version=(Get-Module SOA).Version.ToString()
         Results=$CheckResults
         ModulesOK=$Modules_OK
