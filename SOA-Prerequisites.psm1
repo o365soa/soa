@@ -693,7 +693,8 @@ Function Install-ModuleFromGallery {
     )
 
     # Install the module from PSGallery specifying Force
-    Install-Module $Module -Force -Scope:AllUsers
+    # AllowClobber allows Teams module to be installed when SfBO module is installed/loaded
+    Install-Module $Module -Force -Scope:AllUsers -AllowClobber
 
     If($Update) {
         # Remove old versions of the module
