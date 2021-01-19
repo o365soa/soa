@@ -14,7 +14,7 @@ The following prerequsites are installed, or updated by the prerequisite install
 * Exchange Online (v2) PowerShell module
 * SharePoint Online PowerShell module
 * SharePoint PNP PowerShell module
-* Skype for Business Online PowerShell module
+* Microsoft Teams PowerShell module (to connect to Skype for Business Online)
 
 The following prerequisites are removed
 * SharePoint Online PowerShell module - if manually installed, this is removed from your PS Module Path to prevent conflicts
@@ -66,6 +66,9 @@ The scope of this application is limited to the following:
 * **IdentityRiskyUser.Read.All** (This scope allows SOA to look at identity risk events raised by Azure Identity Protection.)
 * **IdentityRiskEvent.Read.All** (This scope allows SOA to look at identity risk events raised by Azure Identity Protection.)
 * **DeviceManagementConfiguration.Read** (This scope allows SOA to read your Intune configuration policies, if applicable.)
+* **AuditLog.Read.All** (This scope allows SOA to get sign-in activity for user and guest accounts.)
+* **Directory.Read.All** (This scope allows SOA to get sign-in activity for user and guest accounts.)
+* **Policy.Read.All** (This scope allows SOA to get your authorization and conditional access policies.)
 * **Sites.Read.All** (This scope allows SOA to read your SharePoint Online site configuration for various recommended security settings.)
 
 ### Azure AD application security
