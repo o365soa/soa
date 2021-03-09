@@ -966,7 +966,6 @@ Function Test-Connections {
     }
 
     <#
-    connect
         SharePoint
     
     #>
