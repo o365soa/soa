@@ -1006,9 +1006,7 @@ Function Test-Connections {
         $SfBOAdminDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
         Connect-MicrosoftTeams -TenantId $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue
 
-   	If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.microsoft.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
-
-        # Run test command
+   	# Run test command
         If(Get-Command "Get-CSTenant") {
             If((Get-CSTenant).TenantID) {
                 $Command = $True
@@ -1018,6 +1016,9 @@ Function Test-Connections {
         } Else {
             $Command = $False
         }
+	
+	# Check for connection after command test because remote session is not established until after a cmdlet that needs it is run
+	If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.microsoft.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="Teams"
