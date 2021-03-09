@@ -966,7 +966,7 @@ Function Test-Connections {
     }
 
     <#
-    
+    connect
         SharePoint
     
     #>
@@ -1003,14 +1003,11 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Skype (via Microsoft Teams module)..."
+        Write-Host "$(Get-Date) Connecting to Teams (including Skype for Business Online)..."
         $SfBOAdminDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
-        # Explicitly reference New-CsOnlineSession in the Teams modules to ensure the cmdlet in the SfBo module is not used
-        $SfBOSession = MicrosoftTeams\New-CsOnlineSession -OverrideAdminDomain $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue -SessionOption $RPSProxySetting
+        Connect-MicrosoftTeams -TenantId $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue
 
-        If($SfBOSession.State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
-
-        Import-PSSession -Session $SfBOSession -AllowClobber | Out-Null
+   	If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.microsoft.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
         # Run test command
         If(Get-Command "Get-CSTenant") {
