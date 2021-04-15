@@ -210,7 +210,7 @@ Function Invoke-GraphTest {
     
     #>
     Param (
-        $GraphApp,
+        $AzureADApp,
         $Secret,
         $TenantDomain
     )
@@ -222,7 +222,7 @@ Function Invoke-GraphTest {
     
     $Resource = "https://graph.microsoft.com/"
 
-    $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $GraphApp.AppId -Secret $Secret -Resource $Resource
+    $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $Secret -Resource $Resource
     $headerParams = @{'Authorization'="$($Token.AccessTokenType) $($Token.AccessToken)"}
 
     $Result = (Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri 'https://graph.microsoft.com/beta/security/secureScores?$top=1' -ErrorAction:SilentlyContinue -ErrorVariable:RunError)
@@ -234,14 +234,14 @@ Function Invoke-GraphTest {
     }
 
     Return New-Object -TypeName PSObject -Property @{
-        Check="Graph Test"
+        Check="AAD App Graph Test"
         Pass=$Success
         Debug=$RunError
     }
 
 }
 
-Function Set-GraphPermission {
+Function Set-AzureADAppPermission {
     <#
     
         Sets the required permissions on the application
@@ -252,19 +252,19 @@ Function Set-GraphPermission {
         $PerformConsent=$False
     )
 
-    Write-Host "$(Get-Date) Setting Graph Permissions for Application"
-    Write-Verbose "$(Get-Date) Set-GraphPermissions App $($App.ObjectId)"
+    Write-Host "$(Get-Date) Setting Azure AD App Permissions for Application"
+    Write-Verbose "$(Get-Date) Set-AzureADAppPermissions App $($App.ObjectId)"
 
     $RequiredResources = @()
     $PermissionSet = $False
     $ConsentPerformed = $False
 
-    $Roles = Get-RequiredAppPermissions
+    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed
 
     <#
     
         The following creates a Required Resources array. The array consists of RequiredResourceAccess objects.
-        There is one RequiredResourceAccess object for every resource, for instance Graph is a resource.
+        There is one RequiredResourceAccess object for every resource; for instance, Graph is a resource.
         In the RequiredResourceAccess object is an array of scopes that are required for that resource.
     
     #>
@@ -278,7 +278,7 @@ Function Set-GraphPermission {
 
         # Add the scopes
         ForEach($Role in $($ResourceRolesGrouping.Group)) {
-            Write-Verbose "$(Get-Date) Set-GraphPermissions Add $($Role.Name) $($Role.ID)"
+            Write-Verbose "$(Get-Date) Set-AzureADAppPermissions Add $($Role.Name) $($Role.ID)"
             $Perm = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList $Role.ID,"Role"
             $Resource.ResourceAccess += $Perm
         }
@@ -309,7 +309,7 @@ Function Set-GraphPermission {
 
     If($PerformConsent -eq $True)
     {
-        If((Invoke-Consent -App $GraphApp) -eq $True) {
+        If((Invoke-Consent -App $AzureADApp) -eq $True) {
             $ConsentPerformed = $True
         }
     }
@@ -332,7 +332,7 @@ Function Set-GraphPermission {
 Function Invoke-AppPermissionCheck 
 {
     <#
-        Check the permissions are set correctly on the Graph application
+        Check the permissions are set correctly on the Azure AD application
     #>
     Param(
         $App,
@@ -341,7 +341,7 @@ Function Invoke-AppPermissionCheck
 
     $Provisioned = $True
     
-    $Roles = Get-RequiredAppPermissions
+    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
     If($NewPermission)
@@ -397,6 +397,17 @@ Function Invoke-AppPermissionCheck
 
 }
 
+function ConvertFrom-JWT {
+    param ($token)
+    # Perform decode from JWT
+    $tokenPayload = $token.accesstoken.Split(".")[1].Replace('-', '+').Replace('_', '/')
+    while ($tokenPayload.Length % 4) { $tokenPayload += "=" }
+    $tokenByteArray = [System.Convert]::FromBase64String($tokenPayload)
+    $tokenArray = [System.Text.Encoding]::ASCII.GetString($tokenByteArray)
+    Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Token JWT $($tokenArray)"
+    return ($tokenArray | ConvertFrom-Json)
+}
+
 Function Invoke-AppTokenRolesCheck {
     <#
     
@@ -411,31 +422,28 @@ Function Invoke-AppTokenRolesCheck {
     )
 
     $MissingRoles = @()
-    $Resource = "https://graph.microsoft.com/"
+    $GraphResource = "https://graph.microsoft.com/"
+    $SecurityResource = 'https://api.security.microsoft.com'
+
+    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed
 
     # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
     $MaxTime = 300
     $SleepTime = 10
     $Counter = 0
-
-    $Roles = Get-RequiredAppPermissions
-
+    
+    # Check Graph endpoint
     While($Counter -lt $MaxTime)
     {
 
+        Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Graph endpoint"
         # Obtain the token
-        $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $Resource -ClearTokenCache
+        $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -ClearTokenCache
 
         If($Null -ne $Token)
         {
             # Perform decode from JWT
-            $tokenPayload = $token.accesstoken.Split(".")[1].Replace('-', '+').Replace('_', '/')
-            while ($tokenPayload.Length % 4) { $tokenPayload += "=" }
-            $tokenByteArray = [System.Convert]::FromBase64String($tokenPayload)
-            $tokenArray = [System.Text.Encoding]::ASCII.GetString($tokenByteArray)
-            $tokobj = $tokenArray | ConvertFrom-Json
-
-            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Token JWT $($tokenArray)"
+            $tokobj = ConvertFrom-JWT -token $Token
 
             # Check the roles are in the token, only check Graph at this stage.
             ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000"})) {
@@ -445,17 +453,16 @@ Function Invoke-AppTokenRolesCheck {
                 }
             }
         }
-
         If($MissingRoles.Count -eq 0 -and $Null -ne $Token)
         {
-            $Result = $True
+            $GraphResult = $True
         }
         Else 
         {
-            $Result = $False
+            $GraphResult = $False
         }
-
-        If($Result -eq $True)
+    
+        If($GraphResult -eq $True)
         {
             Break
         } 
@@ -465,10 +472,72 @@ Function Invoke-AppTokenRolesCheck {
             $Counter += $SleepTime
             Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck loop - Counter $Counter maxTime $MaxTime"
         }
+    }
+    
+    # Check Security endpoint
+    if ($ATPLicensed -eq $true) {
+        
+        $MaxTime = 300
+        $SleepTime = 10
+        $Counter = 0
+        
+        While($Counter -lt $MaxTime)
+        {
 
+            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Security endpoint"
+
+            # Obtain the token
+            $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $SecurityResource -ClearTokenCache
+
+            If($Null -ne $Token)
+            {
+                # Perform decode from JWT
+                $tokobj = ConvertFrom-JWT -token $Token
+
+                Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Token JWT $($tokenArray)"
+
+                # Check the roles are in the token, check for MTP at this stage.
+                ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "8ee8fdad-f234-4243-8f3b-15c294843740"})) {
+                    If($tokobj.Roles -notcontains $Role.Name) {
+                        Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck missing $($Role.Name)"
+                        $MissingRoles += $Role
+                    }
+                }
+            }
+            If($MissingRoles.Count -eq 0 -and $Null -ne $Token)
+            {
+                $SecurityResult = $True
+            }
+            Else 
+            {
+                $SecurityResult = $False
+            }
+
+            If($SecurityResult -eq $True)
+            {
+                Break
+            } 
+            Else 
+            {
+                Start-Sleep $SleepTime
+                $Counter += $SleepTime
+                Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck loop - Counter $Counter maxTime $MaxTime"
+            }
+        }
     }
 
-    Return $Result
+    # Check if Graph and, if applicable, Security pass.  If Graph fails, return false regardless of Security result
+    if ($GraphResult) {
+        $return = $true
+        if ($ATPLicensed) {
+            if ($SecurityResult) {$return = $true}
+            else {$return = $false}
+        }
+    }
+    else {$return = $false}
+    
+    
+    return $return
 }
 
 Function Invoke-WinRMBasicCheck {
@@ -527,22 +596,22 @@ Function Invoke-Consent {
     Return $True
 }
 
-Function Install-GraphApp {
+Function Install-AzureADApp {
     <#
 
-        Installs the Azure AD Application used for accessing Graph
+        Installs the Azure AD Application used for accessing Graph and Security APIs
     
     #>
 
-    # Create the Graph Application
-    Write-Verbose "$(Get-Date) Install-GraphApp Installing App"
-    $GraphApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
+    # Create the Azure AD Application
+    Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
+    $AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
     
-    # Set up the correct Graph Permissions
-    Set-GraphPermission -App $GraphApp -PerformConsent:$True
+    # Set up the correct permissions
+    Set-AzureADAppPermission -App $AzureADApp -PerformConsent:$True
 
-    # Return the newly created graph application
-    Return (Get-AzureADApplication -ObjectId $GraphApp.ObjectId)
+    # Return the newly created application
+    Return (Get-AzureADApplication -ObjectId $AzureADApp.ObjectId)
     
 }
 
@@ -679,6 +748,28 @@ Function Get-PSModulePath {
 
     Return $Return
 
+}
+
+function Get-LicenseStatus {
+    param ($LicenseType)
+    if ($LicenseType -eq 'ATPP2') {
+        # SKUs that start with strings include Defender P2 to be able to use the Defender API
+        $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','M365EDU_A5','IDENTITY_THREAT_PROTECTION')
+    }
+    else {
+        Write-Error -Message "$(Get-Date) Invalid license type specified"
+        return $false
+    }
+    
+    $subscribedSku = Get-AzureADSubscribedSku
+    foreach ($tSku in $targetSkus) {
+        foreach ($sku in $subscribedSku) {
+            if ($sku.PrepaidUnits.Enabled -gt 0 -or $sku.PrepaidUnits.Warning -gt 0 -and $sku.SkuPartNumber -match $tSku) {
+                return $true
+            }
+        }
+    }
+    return $false
 }
 
 Function Install-ModuleFromGallery {
@@ -1032,8 +1123,8 @@ Function Test-Connections {
     Return $Connections
 }
 
-Function Get-RequiredAppPermissions
-{
+Function Get-RequiredAppPermissions {
+    param ($HasATPP2License)
 
     <#
         This function returns the required application permissions for the AAD application
@@ -1048,6 +1139,7 @@ Function Get-RequiredAppPermissions
 
     $AppRoles = @()
 
+    # Microsoft Graph
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="bf394140-e372-4bf9-a898-299cfc7564e5"
         Name="SecurityEvents.Read.All"
@@ -1083,11 +1175,14 @@ Function Get-RequiredAppPermissions
         Name="Policy.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-    $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="d13f72ca-a275-4b96-b789-48ebcc4da984"
-        Name="Sites.Read.All"
-        Resource="00000003-0000-0ff1-ce00-000000000000"
-    }    
+
+    if ($HasATPP2License -eq $true) {
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
+            Name="Incident.Read.All"
+            Resource="8ee8fdad-f234-4243-8f3b-15c294843740" # Microsoft Threat Protection
+        }  
+    }
 
     Return $AppRoles
 }
@@ -1163,22 +1258,22 @@ Function Invoke-SOAVersionCheck
 
 }
 
-Function Get-SOAGraphApp
+Function Get-SOAAzureADApp
 {
 
     # Determine if Azure AD Application Exists
-    $GraphApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
+    $AzureADApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
 
-    If(!$GraphApp) 
+    If(!$AzureADApp) 
     {
         if ($DoNotRemediate -eq $false) {
-            Write-Host "$(Get-Date) Installing Graph Application..."
-            $GraphApp = Install-GraphApp
-            Write-Verbose "$(Get-Date) Get-SOAGraphApp App $($GraphApp.ObjectId)"
+            Write-Host "$(Get-Date) Installing Azure AD Application..."
+            $AzureADApp = Install-AzureADApp
+            Write-Verbose "$(Get-Date) Get-SOAAzureADApp App $($AzureADApp.ObjectId)"
         }
     }
 
-    Return $GraphApp
+    Return $AzureADApp
 
 }
 
@@ -1228,14 +1323,14 @@ Function Install-SOAPrerequisites
         [Parameter(DontShow)][switch]$NoVersionCheck,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
-    [Parameter(ParameterSetName='GraphOnly')]
+    [Parameter(ParameterSetName='AzureADAppOnly')]
         [switch]$DoNotRemediate,
     [Parameter(ParameterSetName='ConnectOnly')]
         [Switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
         [Switch]$ModulesOnly,
-    [Parameter(ParameterSetName='GraphOnly')]
-        [Switch]$GraphOnly
+    [Parameter(ParameterSetName='AzureADAppOnly')]
+        [Switch]$AzureADAppOnly
     )
 
     <#
@@ -1259,7 +1354,7 @@ Function Install-SOAPrerequisites
     # Default run
     $ConnectCheck = $True
     $ModuleCheck = $True
-    $GraphCheck = $True
+    $AzureADAppCheck = $True
 
     # Default to remediate (applicable only when not using ConnectOnly)
     if ($DoNotRemediate -eq $false){
@@ -1274,20 +1369,20 @@ Function Install-SOAPrerequisites
     If($ModulesOnly) {
         $ConnectCheck = $False
         $ModuleCheck = $True
-        $GraphCheck = $False
+        $AzureADAppCheck = $False
     }
 
     # Change based on ConnectOnly flag
     If($ConnectOnly) {
         $ConnectCheck = $True
-        $GraphCheck = $True
+        $AzureADAppCheck = $True
         $ModuleCheck = $False
     }
 
-    # Change based on GraphOnly flag
-    If($GraphOnly) {
+    # Change based on AzureADAppOnly flag
+    If($AzureADAppOnly) {
         $ConnectCheck = $False
-        $GraphCheck = $True
+        $AzureADAppCheck = $True
         $ModuleCheck = $False
     }
 
@@ -1335,8 +1430,6 @@ Function Install-SOAPrerequisites
 
     # Final check list
     $CheckResults = @()
-
-    $AppRoles = Get-RequiredAppPermissions
 
     <#
 
@@ -1473,45 +1566,49 @@ Function Install-SOAPrerequisites
         $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $Null -ne $_.OtherErrors})
     }
 
-    If($GraphCheck -eq $True) {
+    If($AzureADAppCheck -eq $True) {
 
-        # When GraphCheck is ran by itself, this script will not be connected to Azure AD
+        $ATPLicensed = Get-LicenseStatus -LicenseType ATPP2
+        Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
+        $AppRoles = Get-RequiredAppPermissions -HasATPP2License ($ATPLicensed)
+
+        # When AzureADAppCheck is run by itself, this script will not be connected to Azure AD
         If((Get-AzureADConnected) -eq $False) {
             Connect-AzureAD | Out-Null
         }
 
         Invoke-LoadAdal
 
-        Write-Host "$(Get-Date) Checking Graph..."
+        Write-Host "$(Get-Date) Checking Azure AD Application..."
 
         # Get the default MSOL domain
         $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
 
         # Determine if Azure AD Application Exists and create if doesnt
-        $GraphApp = Get-SOAGraphApp
+        $AzureADApp = Get-SOAAzureADApp
 
-        If($GraphApp) 
+        If($AzureADApp) 
         {
 
-            # Pass the graph app check
+            # Pass the AAD app check
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="Graph Application"
+                Check="AAD Application"
                 Pass=$True
             }
 
             # Reset secret
-            $clientsecret = Reset-AppSecret -App $GraphApp
+            $clientsecret = Reset-AppSecret -App $AzureADApp
 
-            $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
+            $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
                 
-            # Graph Permission - Perform remediation if specified
+            # AAD App Permission - Perform remediation if specified
             If($AppTest.Permissions -eq $False -and $DoNotRemediate -eq $false)
             {
-                # Set up the correct Graph Permissions
+                # Set up the correct AAD App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
-                If((Set-GraphPermission -App $GraphApp -Roles $AppRoles -PerformConsent:$True) -eq $True) {
+                If((Set-AzureADAppPermission -App $AzureADApp -Roles $AppRoles -PerformConsent:$True) -eq $True) {
                     # Perform check again after setting permissions
-                    $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
+                    $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
                 }
             }
 
@@ -1520,33 +1617,33 @@ Function Install-SOAPrerequisites
                 Write-Host "$(Get-Date) Missing roles in access token; possible that consent was not completed..."
                 if ($DoNotRemediate -eq $false) {
                     # Request admin consent
-                    If((Invoke-Consent -App $GraphApp) -eq $True) {
+                    If((Invoke-Consent -App $AzureADApp) -eq $True) {
                         # Perform check again after consent
-                        $AppTest = Test-SOAApplication -App $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
+                        $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -WriteHost
                     }
                 }
             }
 
             # Add final result to checkresults object
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="Graph Permissions"
+                Check="AAD App Permissions"
                 Pass=$AppTest.Permissions
             }
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="Graph Token"
+                Check="AAD App Token"
                 Pass=$AppTest.Token
             }
 
             # Perform Graph Check
             Write-Host "$(Get-Date) Performing Graph Test..."
-            $CheckResults += Invoke-GraphTest -GraphApp $GraphApp -Secret $clientsecret -TenantDomain $tenantdomain
+            $CheckResults += Invoke-GraphTest -AzureADApp $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain
 
         } 
         Else 
         {
-            # Graph app does not exist
+            # AAD application does not exist
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="Graph Application"
+                Check="AAD Application"
                 Pass=$False
             }
         }
@@ -1604,9 +1701,9 @@ Function Install-SOAPrerequisites
 
     }
 
-    If($GraphCheck -eq $True) {
+    If($AzureADAppCheck -eq $True) {
 
-        Write-Host "$(Get-Date) Graph checks" -ForegroundColor Green
+        Write-Host "$(Get-Date) Azure AD app checks" -ForegroundColor Green
 
     }
 
@@ -1614,9 +1711,14 @@ Function Install-SOAPrerequisites
 
     $CheckResults | Format-Table Check,Pass
 
+    $SOAModule = Get-Module SOA
+    if ($SOAModule) {
+        $version = $SOAModule.Version.ToString()
+    }
+    
     New-Object -TypeName PSObject -Property @{
         Date=(Get-Date).DateTime
-	    Version=(Get-Module SOA).Version.ToString()
+	    Version=$version
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
