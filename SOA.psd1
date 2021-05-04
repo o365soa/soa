@@ -12,7 +12,7 @@
 # RootModule = ''
 
 # Version number of this module.
-ModuleVersion = '1.5.5'
+ModuleVersion = '2.0'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -27,7 +27,7 @@ Author = 'Microsoft'
 CompanyName = 'Microsoft'
 
 # Copyright statement for this module
-Copyright = '(c) 2019 Microsoft. All rights reserved.'
+Copyright = '(c) 2021 Microsoft. All rights reserved.'
 
 # Description of the functionality provided by this module
 Description = 'Scripts required for the SOA Delivery'
