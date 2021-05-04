@@ -14,7 +14,7 @@ The following prerequsites are installed, or updated by the prerequisite install
 * Exchange Online (v2) PowerShell module
 * SharePoint Online PowerShell module
 * SharePoint PNP PowerShell module
-* Microsoft Teams PowerShell module (to connect to Skype for Business Online)
+* Microsoft Teams PowerShell module
 
 The following prerequisites are removed
 * SharePoint Online PowerShell module - if manually installed, this is removed from your PS Module Path to prevent conflicts
@@ -30,9 +30,9 @@ In order to install the module and run the prerequisite script, you must have:
 * Local Admin access to the workstation that you will perform the collection from
 * PowerShell Gallery access configured (Automatically configured on PowerShell 5, which is standard on Windows 10)
 * PowerShellGet version 2.2.4 or higher
-   * As of April 2020, PowerShell Gallery supports only TLS 1.2.  While PowerShell and Windows support TLS 1.2, in some proxy environments the proxy server might negotiate a lower version, which will cause a Resource Unavailable error when attempting to install any module from PowerShell Gallery.  PowerShellGet 2.2.4 works around this issue by temporarily forcing TLS 1.2 when installing any module from PowerShell Gallery and then changing back to the OS default.  If at least PowerShellGet 2.2.4 is not installed, run the following to install 2.2.4.1 (version number difference is intentional):
+   * As of April 2020, PowerShell Gallery supports only TLS 1.2.  While PowerShell and Windows support TLS 1.2, in some proxy environments the proxy server might negotiate a lower version, which will cause a Resource Unavailable error when attempting to install any module from PowerShell Gallery.  PowerShellGet 2.2.4 works around this issue by temporarily forcing TLS 1.2 when installing any module from PowerShell Gallery and then changing back to the OS default.  If at least PowerShellGet 2.2.4 is not installed, run the following to install the latest version:
    
-      `Install-Module PowerShellGet -RequiredVersion 2.2.4.1`
+      `Install-Module PowerShellGet`
 
 ### Running the prerequisite script
 
