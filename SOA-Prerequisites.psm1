@@ -544,7 +544,7 @@ Function Invoke-WinRMBasicCheck {
     <#
     
         Checks to determine if WinRM basic authentication is enabled.
-        This is required for Exchange Online and Skype for Business PowerShell modules.
+        This is required for Exchange Online and Teams modules (the latter when connecting via RPS).
     
     #>
 
@@ -1086,20 +1086,20 @@ Function Test-Connections {
     
     <#
     
-        Microsoft Teams (includes Skype for Business Online)
+        Microsoft Teams
     
     #>
     If($Bypass -notcontains "Teams") {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Teams (including Skype for Business Online)..."
-        $SfBOAdminDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
-        Connect-MicrosoftTeams -TenantId $SfBOAdminDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue
+        Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
+        $InitialDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
+        Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue
 
-   	# Run test command
-        If(Get-Command "Get-CSTenant") {
-            If((Get-CSTenant).TenantID) {
+   	# Run test command that uses RPS
+        If(Get-Command "Get-CsTenantFederationConfiguration") {
+            If(Get-CsTenantFederationConfiguration) {
                 $Command = $True
             } Else {
                 $Command = $False
@@ -1108,7 +1108,7 @@ Function Test-Connections {
             $Command = $False
         }
 	
-	# Check for connection after command test because remote session is not established until after a cmdlet that needs it is run
+	# Check for connection after command test because RPS is not established until after a cmdlet that needs it is run
 	If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.microsoft.com"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
         $Connections += New-Object -TypeName PSObject -Property @{
