@@ -228,7 +228,7 @@ Function Invoke-GraphTest {
     Param (
         $AzureADApp,
         $Secret,
-        $TenantDomain
+        $TenantDomain,
 		[string]$O365EnvironmentName
     )
 
@@ -281,7 +281,7 @@ Function Set-AzureADAppPermission {
     #>
     Param(
         $App,
-        $PerformConsent=$False
+        $PerformConsent=$False,
 		[string]$O365EnvironmentName
     )
 
@@ -451,7 +451,7 @@ Function Invoke-AppTokenRolesCheck {
     Param (
         $App,
         $Secret,
-        $TenantDomain
+        $TenantDomain,
 		[string]$O365EnvironmentName
     )
 
@@ -1388,7 +1388,7 @@ Function Test-SOAApplication
         $Secret,
         [Parameter(Mandatory=$true)]
         $TenantDomain,
-        [Switch]$WriteHost
+        [Switch]$WriteHost,
 		[string]$O365EnvironmentName
     )
 
