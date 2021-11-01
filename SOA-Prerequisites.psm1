@@ -1389,7 +1389,7 @@ Function Test-SOAApplication
         [Parameter(Mandatory=$true)]
         $TenantDomain,
         [Switch]$WriteHost,
-		[string]$O365EnvironmentName
+	[string]$O365EnvironmentName="Commercial"
     )
 
     Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
