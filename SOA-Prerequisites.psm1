@@ -1552,8 +1552,8 @@ Function Install-SOAPrerequisites
                     
                     if ($Modules_Error | Where-Object {$_.Multiple -eq $true}){
                         Write-Host "Paths to modules with multiple versions:"
-                        Write-Host ""
                         foreach ($m in ($Modules_Error | Where-Object {$_.Multiple -eq $true})) {
+                            Write-Host ""
                             Write-Host "Module:" -NoNewline
                             $m | Select-Object -ExpandProperty Module
                             Write-Host "Path:"
