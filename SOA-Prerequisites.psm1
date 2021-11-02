@@ -191,7 +191,7 @@ Function Get-AccessToken {
         "USGovGCCHigh" {$authority = "https://login.microsoftonline.us/$TenantName";break}
         "USGovDoD"     {$authority = "https://login.microsoftonline.us/$TenantName";break}
         "Germany"      {$authority = "https://login.microsoftonline.de/$TenantName";break}
-        "China"        {$authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
+        "China"        {$authority = "https://login.partner.microsoftonline.cn/$TenantName"}
     }
     $authContext        = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority   
     
@@ -250,9 +250,9 @@ Function Invoke-GraphTest {
         "USGovGCCHigh" {$Base = "https://graph.microsoft.us";break}
         "USGovDoD"     {$Base = "https://dod-graph.microsoft.us";break}
         "Germany"      {$Base = "https://graph.microsoft.de";break}
-        "China"        {$Base = "https://microsoftgraph.chinacloudapi.cn";break}
+        "China"        {$Base = "https://microsoftgraph.chinacloudapi.cn"}
     }
-	$Uri = "$Base/beta/security/secureScores?$top=1"
+	$Uri = "$Base/beta/security/secureScores?`$top=1"
 
     $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $Secret -Resource $Resource -O365EnvironmentName $O365EnvironmentName
     $headerParams = @{'Authorization'="$($Token.AccessTokenType) $($Token.AccessToken)"}
@@ -627,7 +627,7 @@ Function Invoke-Consent {
         "USGovGCCHigh" {$AuthLocBase = "https://login.microsoftonline.us";break}
         "USGovDoD"     {$AuthLocBase = "https://login.microsoftonline.us";break}
         "Germany"      {$AuthLocBase = "https://login.microsoftonline.de";break}
-        "China"        {$AuthLocBase = "https://login.partner.microsoftonline.cn";break}
+        "China"        {$AuthLocBase = "https://login.partner.microsoftonline.cn"}
     }
     $Location = "$AuthLocBase/common/adminconsent?client_id=$($App.AppId)&state=12345&redirect_uri=https://soaconsentreturn.azurewebsites.net"
     
@@ -1115,7 +1115,7 @@ Function Test-Connections {
             "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "Germany"      {Connect-ExchangeOnline -ExchangeEnvironmentName O365GermanyCloud -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+            "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null}
         }
        
         If((Get-PSSession | Where-Object {$_.ComputerName -like "outlook.office*" -or $_.ComputerName -like "webmail.apps.mil" -or $_.ComputerName -like "partner.outlook.cn"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
@@ -1155,7 +1155,7 @@ Function Test-Connections {
             "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "Germany"      {Connect-SPOService -Url $adminUrl -Region Germany -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "China"        {Connect-SPOService -Url $adminUrl -Region China -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+            "China"        {Connect-SPOService -Url $adminUrl -Region China -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
         }
 
         # If no error, try test command
