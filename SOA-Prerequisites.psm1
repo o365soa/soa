@@ -642,6 +642,11 @@ Function Get-ModuleStatus {
     If($InstalledModule.Count -gt 1) {
         # More than one module, flag this
         $MultipleFound = $True
+        $modulePaths = @()
+        foreach ($m in $InstalledModule) {
+            $modulePaths += $m.Path.Substring(0,$m.Path.LastIndexOf('\'))
+        }
+        $modulePaths = $modulePaths | Sort-Object
         $Installed = $True
 
         # Use the latest for comparisons
@@ -671,6 +676,7 @@ Function Get-ModuleStatus {
         Installed=$Installed
         Conflict=$(If($Installed -and $ConflictModule) { $True } Else { $False })
         Multiple=$MultipleFound
+        Path=$modulePaths
         NewerAvailable=$NewerAvailable
     }
   
@@ -1321,6 +1327,7 @@ Function Install-SOAPrerequisites
         [Switch]$UseProxy,
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
+        [Parameter(DontShow)][switch]$AllowMultipleModuleVersions,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
     [Parameter(ParameterSetName='AzureADAppOnly')]
@@ -1533,11 +1540,30 @@ Function Install-SOAPrerequisites
             }
             # Don't continue to check connections, still modules with errors
             If($Modules_Error.Count -gt 0) {
-                Write-Important
+                #Ignore error modules if it is only multiple versions and allow multiples switch has been used
+                if ($Modules_Error | Where-Object {$_.Installed -eq $true -and $_.NewerAvailable -eq $false -and $_.Multiple -eq $true -and $AllowMultipleModuleVersions -eq $true}) {
+                    Write-Warning "$(Get-Date) A module has an error, but it is only because there are multiple versions installed, and the AllowMultipleModuleVersions switch is True, so continuing."
+                }
+                else {
+                    Write-Important
 
-                Write-Host "$(Get-Date) The module check has errors. The connection check will not proceed until the module check has no errors." -ForegroundColor Red
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-                Throw "$(Get-Date) The modules above must be remediated before continuing. Contact your CSAM or delivery engineer for further information as needed. "
+                    Write-Host "$(Get-Date) The module check has errors. The connection check will not proceed until the module check has no errors." -ForegroundColor Red
+                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+                    
+                    if ($Modules_Error | Where-Object {$_.Multiple -eq $true}){
+                        Write-Host "Paths to modules with multiple versions:"
+                        foreach ($m in ($Modules_Error | Where-Object {$_.Multiple -eq $true})) {
+                            Write-Host ""
+                            Write-Host "Module:" -NoNewline
+                            $m | Select-Object -ExpandProperty Module
+                            Write-Host "Path:"
+                            $m | Select-Object -ExpandProperty Path
+                            Write-Host ""
+                        }
+                    }
+                    
+                    Throw "$(Get-Date) The modules above must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
+                }
             }
         }
     }
