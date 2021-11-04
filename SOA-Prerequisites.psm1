@@ -3,10 +3,10 @@
 
 <#
 
-	.SYNOPSIS
-		Prerequisite validation/installation module for Office 365: Security Optimization Assessment
+    .SYNOPSIS
+        Prerequisite validation/installation module for Office 365: Security Optimization Assessment
 
-	.DESCRIPTION
+    .DESCRIPTION
         Contains installation cmdlet which must be run in advance of a Microsoft
         proactive offering of the Office 365 Security Optimization Assessment
 
@@ -115,13 +115,13 @@ function Get-SharePointAdminUrl
         Used to determine what the SharePoint Admin URL is during connection tests
     
     #>
-	Param (
-		[string]$O365EnvironmentName
-	)
+    Param (
+        [string]$O365EnvironmentName
+    )
 
     $tenantName = Get-SPOTenantName
     
-	switch ($O365EnvironmentName) {
+    switch ($O365EnvironmentName) {
         "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
         "USGovGCCHigh" {$url = "https://" + $tenantName + "-admin.sharepoint.us";break}
         "USGovDoD"     {$url = "https://" + $tenantName + "-admin.dps.mil";break}
@@ -179,7 +179,7 @@ Function Get-AccessToken {
         $Secret,
         $Resource,
         [Switch]$ClearTokenCache, # useful if we need to get newly added scopes
-		[string]$O365EnvironmentName
+        [string]$O365EnvironmentName
     )
 
     Write-Verbose "$(Get-Date) Get-AccessToken Tenant $TenantName ClientID $ClientID Resource $Resource TokenCache $ClearTokenCache SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
@@ -229,7 +229,7 @@ Function Invoke-GraphTest {
         $AzureADApp,
         $Secret,
         $TenantDomain,
-		[string]$O365EnvironmentName
+        [string]$O365EnvironmentName
     )
 
     $Success = $False
@@ -237,7 +237,7 @@ Function Invoke-GraphTest {
 
     Write-Host "$(Get-Date) Testing Graph..."
     
-	switch ($O365EnvironmentName) {
+    switch ($O365EnvironmentName) {
         "Commercial"   {$Resource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$Resource = "https://graph.microsoft.us/";break}
         "USGovDoD"     {$Resource = "https://dod-graph.microsoft.us/";break}
@@ -252,7 +252,7 @@ Function Invoke-GraphTest {
         "Germany"      {$Base = "https://graph.microsoft.de";break}
         "China"        {$Base = "https://microsoftgraph.chinacloudapi.cn"}
     }
-	$Uri = "$Base/beta/security/secureScores?`$top=1"
+    $Uri = "$Base/beta/security/secureScores?`$top=1"
 
     $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $Secret -Resource $Resource -O365EnvironmentName $O365EnvironmentName
     $headerParams = @{'Authorization'="$($Token.AccessTokenType) $($Token.AccessToken)"}
@@ -282,7 +282,7 @@ Function Set-AzureADAppPermission {
     Param(
         $App,
         $PerformConsent=$False,
-		[string]$O365EnvironmentName
+        [string]$O365EnvironmentName
     )
 
     Write-Host "$(Get-Date) Setting Azure AD App Permissions for Application"
@@ -292,7 +292,7 @@ Function Set-AzureADAppPermission {
     $PermissionSet = $False
     $ConsentPerformed = $False
 
-    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed -O365EnvironmentName $O365EnvironmentName
 
     <#
     
@@ -374,7 +374,7 @@ Function Invoke-AppPermissionCheck
 
     $Provisioned = $True
     
-    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed -O365EnvironmentName $O365EnvironmentName
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
     If($NewPermission)
@@ -452,28 +452,19 @@ Function Invoke-AppTokenRolesCheck {
         $App,
         $Secret,
         $TenantDomain,
-		[string]$O365EnvironmentName
+        [string]$O365EnvironmentName
     )
 
     $MissingRoles = @()
-	switch ($O365EnvironmentName) {
+    switch ($O365EnvironmentName) {
         "Commercial"   {$GraphResource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$GraphResource = "https://graph.microsoft.us/";break}
         "USGovDoD"     {$GraphResource = "https://dod-graph.microsoft.us/";break}
         "Germany"      {$GraphResource = "https://graph.microsoft.de/";break}
         "China"        {$GraphResource = "https://microsoftgraph.chinacloudapi.cn/"}
     }
-    switch ($O365EnvironmentName) {
-        "Commercial"   {$SecurityResource = "https://api.security.microsoft.com";break}
-        "USGovGCCHigh" {$SecurityResource = "https://api-gov.securitycenter.microsoft.us";break}
-        "USGovDoD"     {$SecurityResource = "https://api-gov.securitycenter.microsoft.us";break}
-        #"Germany"      {$SecurityResource = "unknown";break}
-        #"China"        {$SecurityResource = "unknown";break}
-        default        {$SecurityResource = "https://api.security.microsoft.com"}
-    }
-    #Once Germany and China have Defender API endpoints, they can be populated and the default removed.
 
-    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed -O365EnvironmentName $O365EnvironmentName
 
     # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
     $MaxTime = 300
@@ -522,8 +513,18 @@ Function Invoke-AppTokenRolesCheck {
         }
     }
     
+    $endpointAvailable = $false
+    switch ($O365EnvironmentName) {
+        "Commercial"   {$SecurityResource = "https://api.security.microsoft.com";$endpointAvailable=$true;break}
+        "USGovGCCHigh" {$SecurityResource = "";$endpointAvailable=$false;break}
+        "USGovDoD"     {$SecurityResource = "";$endpointAvailable=$false;break}
+        "Germany"      {$SecurityResource = "";$endpointAvailable=$false;break}
+        "China"        {$SecurityResource = "";$endpointAvailable=$false}
+    }
+    #Defender API is currently not available for sovereign clouds.  Once endpoints are available, they can be populated and set to True.
+
     # Check Security endpoint
-    if ($ATPLicensed -eq $true) {
+    if ($ATPLicensed -eq $true -and $endpointAvailable -eq $true) {
         
         $MaxTime = 300
         $SleepTime = 10
@@ -577,7 +578,7 @@ Function Invoke-AppTokenRolesCheck {
     # Check if Graph and, if applicable, Security pass.  If Graph fails, return false regardless of Security result
     if ($GraphResult) {
         $return = $true
-        if ($ATPLicensed) {
+        if ($ATPLicensed -eq $true -and $endpointAvailable -eq $true) {
             if ($SecurityResult) {$return = $true}
             else {$return = $false}
         }
@@ -619,7 +620,7 @@ Function Invoke-Consent {
     #>
     Param (
         $App,
-		[string]$O365EnvironmentName
+        [string]$O365EnvironmentName
     )
 
     switch ($O365EnvironmentName) {
@@ -658,9 +659,9 @@ Function Install-AzureADApp {
         Installs the Azure AD Application used for accessing Graph and Security APIs
     
     #>
-	Param(
-		[string]$O365EnvironmentName
-	)
+    Param(
+        [string]$O365EnvironmentName
+    )
 
     # Create the Azure AD Application
     Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
@@ -987,7 +988,7 @@ Function Invoke-SOAModuleCheck {
 Function Test-Connections {
     Param(
         $RPSProxySetting,
-		[string]$O365EnvironmentName
+        [string]$O365EnvironmentName
     )
 
     $Connections = @()
@@ -1006,13 +1007,13 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 1.."
-	    switch ($O365EnvironmentName) {
-			"Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-			"USGovGCCHigh" {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-			"USGovDoD"     {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-			"Germany"      {Connect-MsolService -AzureEnvironment AzureGermanyCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-			"China"        {Connect-MsolService -AzureEnvironment AzureChinaCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError}
-		}
+        switch ($O365EnvironmentName) {
+            "Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
+            "USGovGCCHigh" {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
+            "USGovDoD"     {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
+            "Germany"      {Connect-MsolService -AzureEnvironment AzureGermanyCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
+            "China"        {Connect-MsolService -AzureEnvironment AzureChinaCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError}
+        }
         
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
@@ -1040,13 +1041,13 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2.."
-		switch ($O365EnvironmentName) {
-			"Commercial"   {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-			"USGovGCCHigh" {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-			"USGovDoD"     {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-			"Germany"      {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
-			"China"        {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureChinaCloud | Out-Null}
-		}
+        switch ($O365EnvironmentName) {
+            "Commercial"   {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+            "USGovGCCHigh" {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
+            "USGovDoD"     {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
+            "Germany"      {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
+            "China"        {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureChinaCloud | Out-Null}
+        }
 
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
@@ -1077,7 +1078,7 @@ Function Test-Connections {
         switch ($O365EnvironmentName) {
             "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
-			"USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
+            "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
             "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common | Out-Null;break}
             "China"        {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common | Out-Null}
         }
@@ -1150,7 +1151,7 @@ Function Test-Connections {
 
         Write-Host "$(Get-Date) Connecting to SharePoint Online.."
         $adminUrl = Get-SharePointAdminUrl -O365EnvironmentName $O365EnvironmentName
-		switch ($O365EnvironmentName) {
+        switch ($O365EnvironmentName) {
             "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1185,7 +1186,7 @@ Function Test-Connections {
 
         Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
         $InitialDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
-		switch ($O365EnvironmentName) {
+        switch ($O365EnvironmentName) {
             "Commercial"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
             "USGovGCCHigh" {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
             "USGovDoD"     {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
@@ -1195,7 +1196,7 @@ Function Test-Connections {
         }
         #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
-   	# Run test command that uses RPS
+    # Run test command that uses RPS
         If(Get-Command "Get-CsTenantFederationConfiguration") {
             If(Get-CsTenantFederationConfiguration) {
                 $Command = $True
@@ -1205,9 +1206,9 @@ Function Test-Connections {
         } Else {
             $Command = $False
         }
-	
-	# Check for connection after command test because RPS is not established until after a cmdlet that needs it is run
-	If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.*"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
+
+    # Check for connection after command test because RPS is not established until after a cmdlet that needs it is run
+    If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.*"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="Teams"
@@ -1222,7 +1223,11 @@ Function Test-Connections {
 }
 
 Function Get-RequiredAppPermissions {
-    param ($HasATPP2License)
+    param
+    (
+    $HasATPP2License,
+    [string]$O365EnvironmentName="Commercial"
+    )
 
     <#
         This function returns the required application permissions for the AAD application
@@ -1274,7 +1279,17 @@ Function Get-RequiredAppPermissions {
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
 
-    if ($HasATPP2License -eq $true) {
+    #Defender API and threat investigations not currently available in sovereign clouds, only Commercial. Update if/as endpoints become available.
+    $DefenderAvailable = $false
+    switch ($O365EnvironmentName) {
+        "Commercial"   {$DefenderAvailable=$true;break}
+        "USGovGCCHigh" {$DefenderAvailable=$false;break}
+        "USGovDoD"     {$DefenderAvailable=$false;break}
+        "Germany"      {$DefenderAvailable=$false;break}
+        "China"        {$DefenderAvailable=$false}
+    }
+
+    if ($HasATPP2License -eq $true -and $DefenderAvailable -eq $true) {
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
             Name="Incident.Read.All"
@@ -1358,9 +1373,9 @@ Function Invoke-SOAVersionCheck
 
 Function Get-SOAAzureADApp
 {
-	Param(
-		[string]$O365EnvironmentName
-	)
+    Param(
+        [string]$O365EnvironmentName
+    )
 
     # Determine if Azure AD Application Exists
     $AzureADApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
@@ -1389,7 +1404,7 @@ Function Test-SOAApplication
         [Parameter(Mandatory=$true)]
         $TenantDomain,
         [Switch]$WriteHost,
-	[string]$O365EnvironmentName="Commercial"
+        [string]$O365EnvironmentName="Commercial"
     )
 
     Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
@@ -1676,7 +1691,7 @@ Function Install-SOAPrerequisites
 
         # When AzureADAppCheck is run by itself, this script will not be connected to Azure AD
         If((Get-AzureADConnected) -eq $False) {
-			switch ($O365EnvironmentName) {
+            switch ($O365EnvironmentName) {
                 "Commercial"   {$AADConnection = Connect-AzureAD | Out-Null;break}
                 "USGovGCCHigh" {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
                 "USGovDoD"     {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
@@ -1687,7 +1702,7 @@ Function Install-SOAPrerequisites
 
         $ATPLicensed = Get-LicenseStatus -LicenseType ATPP2
         Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
-        $AppRoles = Get-RequiredAppPermissions -HasATPP2License ($ATPLicensed)
+        $AppRoles = Get-RequiredAppPermissions -HasATPP2License ($ATPLicensed) -O365EnvironmentName $O365EnvironmentName
 
         Invoke-LoadAdal
 
@@ -1830,7 +1845,7 @@ Function Install-SOAPrerequisites
     
     New-Object -TypeName PSObject -Property @{
         Date=(Get-Date).DateTime
-	    Version=$version
+        Version=$version
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
