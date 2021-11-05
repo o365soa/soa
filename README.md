@@ -57,6 +57,15 @@ We recommend that traffic routing to Microsoft 365 bypasses proxy infrastructure
 
 If a proxy is required, try running with `-UseProxy`.
 
+### Sovereign Clouds
+
+When preparing for an assessment of a Microsoft 365 tenant in a sovereign cloud environment, the O365EnvironmentName parameter should be used. The default is "Commercial" which does not need to be specified, and can be used for standard Commercial and Government Community Cloud (GCC) tenants.
+
+Use "USGovGCCHigh" for Microsoft Cloud for US Government L4 (GCC-High)
+Use "USGovDoD" for Microsoft Cloud for US Government L5 (DOD)
+Use "Germany" for Microsoft Cloud Germany
+Use "China" for Azure and Microsoft 365 operated by 21Vianet in China
+
 ## Azure AD application
 
 An Azure AD Application is required in order to perform API calls to Microsoft Graph and, if applicable, Microsoft 365 Defender. Installation of this application is performed by the prerequisite script. There are some things, however, that you should be aware of:
