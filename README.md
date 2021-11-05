@@ -41,7 +41,7 @@ In order to install the module and run the prerequisite script, you must have:
 
    `Install-Module SOA`
 
-3. Run the following to install the prerequisites:
+3. Run the following to install the prerequisites (see below for optional parameters that may be applicable):
 
    `Install-SOAPrerequisites`
 
