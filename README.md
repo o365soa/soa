@@ -13,7 +13,6 @@ The following prerequsites are installed, or updated by the prerequisite install
 * Azure AD (v2) Preview PowerShell module
 * Exchange Online (v2) PowerShell module
 * SharePoint Online PowerShell module
-* SharePoint PNP PowerShell module
 * Microsoft Teams PowerShell module
 
 The following prerequisites are removed

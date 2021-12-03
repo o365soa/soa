@@ -936,7 +936,7 @@ Function Get-ManualModules
 
     $Return = @()
 
-    $ModuleChecks = @("SharePoint Online Management Shell","SharePointPnPPowerShellOnline")
+    $ModuleChecks = @("SharePoint Online Management Shell")
 
     ForEach($ModuleCheck in $ModuleChecks)
     {
@@ -971,7 +971,7 @@ Function Invoke-SOAModuleCheck {
     # Bypass checks
     If($Bypass -notcontains "AAD") { $RequiredModules += "AzureADPreview" }
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
-    If($Bypass -notcontains "SharePoint") { $RequiredModules += "SharePointPnPPowerShellOnline","Microsoft.Online.SharePoint.PowerShell" }
+    If($Bypass -notcontains "SharePoint") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
     if (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
 
