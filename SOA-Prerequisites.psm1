@@ -859,6 +859,48 @@ Function Install-ModuleFromGallery {
     }
 }
 
+Function Install-ADDSModule {
+    <#
+    
+        Installs the on-prem Active Directory module based on the detected OS version
+    
+    #>
+
+    $ComputerInfo = Get-ComputerInfo
+
+    If($ComputerInfo) {
+        Write-Verbose "Computer type: $($ComputerInfo.WindowsInstallationType)"
+        Write-Verbose "OS Build: $($ComputerInfo.OsBuildNumber)"
+        If ($ComputerInfo.WindowsInstallationType -eq "Server") {
+            Write-Verbose "Server OS detected, using 'Add-WindowsFeature'"
+            Try {
+                Add-WindowsFeature -Name RSAT-AD-PowerShell -IncludeAllSubFeature | Out-Null
+            } Catch {
+                Write-Error "$(Get-Date) Could not install ActiveDirectory module due to error"
+            }
+        }
+        ElseIf ($ComputerInfo.WindowsInstallationType -eq "Client" -And $ComputerInfo.OsBuildNumber -ge 17763) {
+            Write-Verbose "Windows 10 version 1809 or later detected, using 'Add-WindowsCapability'"
+            Try {
+                Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" | Out-Null
+            } Catch {
+                Write-Error "$(Get-Date) Could not install ActiveDirectory module due to error. Check Proxy server and WSUS settings."
+            }
+        }
+        ElseIf ($ComputerInfo.WindowsInstallationType -eq "Client") {
+            Write-Verbose "Windows 10 version 1803 or earlier detected, using 'Enable-WindowsOptionalFeature'"
+            Try {
+                Enable-WindowsOptionalFeature -Online -FeatureName RSATClient-Roles-AD-Powershell | Out-Null
+            } Catch {
+                Write-Error "$(Get-Date) Could not install ActiveDirectory module due to error. Check Proxy server and WSUS settings, or manually download and install from https://www.microsoft.com/en-us/download/details.aspx?id=45520"
+            }
+        }
+        Else {
+            Write-Error "Error detecting the OS type while installing ActiveDirectory module."
+        }
+    }
+}
+
 Function Invoke-ModuleFix {
     <#
 
@@ -872,8 +914,9 @@ Function Invoke-ModuleFix {
         # Administrator so can remediate
         $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
         $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True}
-        $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $Null -ne $_.GalleryVersion }
+        $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -ne $_.GalleryVersion }
         $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
+        $MissingNonGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -eq $_.GalleryVersion}
 
         # Determine status of PSGallery repository
         $PSGallery = Get-PSRepository -Name "PSGallery"
@@ -917,6 +960,17 @@ Function Invoke-ModuleFix {
             Uninstall-OldModules -Module $($DupeModule.Module)
         }
 
+        # Missing modules which are not available from gallery
+        ForEach($MissingNonGalleryModule in $MissingNonGalleryModules) {
+            Write-Host "$(Get-Date) Installing $($MissingNonGalleryModule.Module)"
+
+            Switch ($MissingNonGalleryModule.Module) {
+                "ActiveDirectory" {
+                    Write-Verbose "$(Get-Date) Installing on-premises Active Directory module"
+                    Install-ADDSModule
+                }
+            }
+        }
     } Else {
         Write-Error "Load PowerShell as administrator in order to fix modules"
         Return $False
@@ -973,7 +1027,8 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
-    if (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
+    If (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
+    If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
     $ModuleCheckResult = @()
 
@@ -1457,6 +1512,12 @@ Function Install-SOAPrerequisites
         [Switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
         [Switch]$ModulesOnly,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ModulesOnly')]
+        [Switch]$SkipADModule,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ModulesOnly')]
+        [Switch]$ADModuleOnly,
     [Parameter(ParameterSetName='AzureADAppOnly')]
         [Switch]$AzureADAppOnly
     )
@@ -1514,6 +1575,11 @@ Function Install-SOAPrerequisites
         $ModuleCheck = $False
     }
 
+    # Change based on SkipADModule flag
+    If($SkipADModule) {
+        $Bypass+="ActiveDirectory"
+    }
+
     <#
     
         Directory creating and transcript starting
@@ -1555,6 +1621,30 @@ Function Install-SOAPrerequisites
         }
     }
 
+    # Check that only the AD module is installed on a standalone machine, and then exit the script
+    If($ADModuleOnly) {
+        Write-Host "$(Get-Date) ADModuleOnly switch was used. All other script functions are disabled. Only the on-premises AD module will be installed and then script will exit."
+
+        $ModuleCheckResult = @(Get-ModuleStatus -ModuleName "ActiveDirectory")
+        $ModuleCheckResult | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+
+        If($ModuleCheckResult.InstalledVersion -ne $Null) {
+            Write-Host "$(Get-Date) ActiveDirectory module is already installed"
+        }
+        Else {
+            If($Remediate) {
+                Write-Host "$(Get-Date) Installing AD module"
+                Install-ADDSModule
+            }
+
+            Write-Host "$(Get-Date) Post-remediation prerequisites check..."
+            $ModuleCheckResult = @(Get-ModuleStatus -ModuleName "ActiveDirectory")
+            $ModuleCheckResult | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+        }
+
+        Stop-Transcript
+        break
+    }
 
     # Final check list
     $CheckResults = @()

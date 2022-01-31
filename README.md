@@ -14,6 +14,7 @@ The following prerequsites are installed, or updated by the prerequisite install
 * Exchange Online (v2) PowerShell module
 * SharePoint Online PowerShell module
 * Microsoft Teams PowerShell module
+* Active Directory PowerShell module
 
 The following prerequisites are removed
 * SharePoint Online PowerShell module - if manually installed, this is removed from your PS Module Path to prevent conflicts
