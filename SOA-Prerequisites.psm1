@@ -1216,8 +1216,8 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
         $adminUrl = Get-SharePointAdminUrl -O365EnvironmentName $O365EnvironmentName
+        Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1507,7 +1507,7 @@ Function Install-SOAPrerequisites
         [Parameter(DontShow)][switch]$NoVersionCheck,
         [Parameter(DontShow)][switch]$AllowMultipleModuleVersions,
     [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ModulesOnly')]
+    [Parameter(ParameterSetName='ConnectOnly')]
         [ValidateScript({if (Resolve-DnsName -Name $PSItem) {$true} else {throw "SPO admin domain does not resolve.  Verify you entered a valid fully qualified domain name."}})]
         [ValidateNotNullOrEmpty()][string]$SPOAdminDomain,
     [Parameter(ParameterSetName='Default')]
