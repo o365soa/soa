@@ -119,14 +119,20 @@ function Get-SharePointAdminUrl
         [string]$O365EnvironmentName
     )
 
-    $tenantName = Get-SPOTenantName
-    
-    switch ($O365EnvironmentName) {
-        "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
-        "USGovGCCHigh" {$url = "https://" + $tenantName + "-admin.sharepoint.us";break}
-        "USGovDoD"     {$url = "https://" + $tenantName + "-admin.dps.mil";break}
-        "Germany"      {$url = "https://" + $tenantName + "-admin.sharepoint.de";break}
-        "China"        {$url = "https://" + $tenantName + "-admin.sharepoint.cn"}
+    # Custom domain provided for connecting to SPO admin endpoint
+    if ($SPOAdminDomain) {
+        $url = "https://" + $SPOAdminDomain
+    }
+    else {
+        $tenantName = Get-SPOTenantName
+        
+        switch ($O365EnvironmentName) {
+            "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
+            "USGovGCCHigh" {$url = "https://" + $tenantName + "-admin.sharepoint.us";break}
+            "USGovDoD"     {$url = "https://" + $tenantName + "-admin.dps.mil";break}
+            "Germany"      {$url = "https://" + $tenantName + "-admin.sharepoint.de";break}
+            "China"        {$url = "https://" + $tenantName + "-admin.sharepoint.cn"}
+        }
     }
     return $url
 }
@@ -1054,7 +1060,7 @@ Function Test-Connections {
 
     $Connections = @()
 
-    Write-Host "$(Get-Date) Connecting..."
+    Write-Host "$(Get-Date) Testing connections..."
 
     <#
         
@@ -1067,7 +1073,7 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 1.."
+        Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 1..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "USGovGCCHigh" {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
@@ -1101,7 +1107,7 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2.."
+        Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2..."
         switch ($O365EnvironmentName) {
             "Commercial"   {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
@@ -1210,8 +1216,8 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to SharePoint Online.."
         $adminUrl = Get-SharePointAdminUrl -O365EnvironmentName $O365EnvironmentName
+        Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1500,6 +1506,10 @@ Function Install-SOAPrerequisites
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
         [Parameter(DontShow)][switch]$AllowMultipleModuleVersions,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ConnectOnly')]
+        [ValidateScript({if (Resolve-DnsName -Name $PSItem) {$true} else {throw "SPO admin domain does not resolve.  Verify you entered a valid fully qualified domain name."}})]
+        [ValidateNotNullOrEmpty()][string]$SPOAdminDomain,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
     [Parameter(ParameterSetName='AzureADAppOnly')]

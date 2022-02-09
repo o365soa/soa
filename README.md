@@ -51,6 +51,10 @@ The script must be run from the machine that you will use to perform the collect
 * The machine should not be a production server, as the pre-requisite script may cause a reboot during installation of modules.
 * You are require to be logged on as a local administrator.
 
+### Custom (vanity) SharePoint Online domain
+
+If you use a custom domain to connect to the SharePoint Online admin endpoint (such as a multi-tenant enhanced organization), you need to specify the domain using the SPOAdminDomain parameter, or the connection test to SPO will fail.
+
 ### Requiring a proxy
 
 We recommend that traffic routing to Microsoft 365 bypasses proxy infrastructure, and this script needs connectivity to the PowerShell Gallery, as well.
