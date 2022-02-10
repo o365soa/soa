@@ -603,9 +603,8 @@ Function Invoke-WinRMBasicCheck {
     
     #>
 
-    $RegistrySetting = Get-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name "AllowBasic" -ErrorAction:SilentlyContinue
-
-    If($RegistrySetting.AllowBasic -eq 0) {
+    # Default for WinRM Client is enabled, so check whether it has been explicitly disabled. Using the WSMAN drive to avoid querying multiple Registry keys
+    If ((Get-ChildItem WSMAN:\localhost\Client\Auth\Basic).Value -eq $False) { 
         $Result=$False
     } Else {
         $Result=$True
