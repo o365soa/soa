@@ -603,8 +603,8 @@ Function Invoke-WinRMBasicCheck {
     
     #>
 
-    # Default for WinRM Client is enabled, so check whether it has been explicitly disabled. Using the WSMAN drive to avoid querying multiple Registry keys
-    If ((Get-ChildItem WSMAN:\localhost\Client\Auth\Basic).Value -eq $False) { 
+    # Default for WinRM Client is enabled, so check whether it has been explicitly disabled.
+    If (((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client\" -Name "auth_basic" -ErrorAction:SilentlyContinue).auth_basic -eq 0) -Or (Get-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name "AllowBasic" -ErrorAction:SilentlyContinue).AllowBasic -eq 0) { 
         $Result=$False
     } Else {
         $Result=$True
