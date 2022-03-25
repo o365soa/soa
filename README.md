@@ -14,6 +14,7 @@ The following prerequsites are installed, or updated by the prerequisite install
 * Exchange Online (v2) PowerShell module
 * SharePoint Online PowerShell module
 * Microsoft Teams PowerShell module
+* Power Apps admin PowerShell module
 * Active Directory PowerShell module
 
 The following prerequisites are removed
@@ -65,6 +66,7 @@ If a proxy is required, try running with `-UseProxy`.
 
 When preparing for an assessment of a Microsoft 365 tenant in a sovereign cloud environment, the `-O365EnvironmentName` parameter should be used. The default value is `Commercial` which does not need to be specified, and can be used for standard Commercial and Government Community Cloud (GCC) tenants.
 
+* Use `USGovGCC` for Microsoft Cloud for US Government (GCC\GCC-Moderate)
 * Use `USGovGCCHigh` for Microsoft Cloud for US Government L4 (GCC-High)
 * Use `USGovDoD` for Microsoft Cloud for US Government L5 (DOD)
 * Use `Germany` for Microsoft Cloud Germany
