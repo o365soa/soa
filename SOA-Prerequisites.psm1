@@ -1021,7 +1021,9 @@ Function Get-ManualModules
 }
 
 Function Invoke-SOAModuleCheck {
-
+    param (
+        [string]$O365EnvironmentName
+    )
     $RequiredModules = @()
     
     # Conflict modules are modules which their presence causes issues
@@ -1033,6 +1035,14 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "SharePoint") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
     If (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
+    If ($Bypass -notcontains "PowerApps") {
+        if ($O365EnvironmentName -eq "Germany") {
+            Write-Host "$(Get-Date) Skipping Power Apps module because Power Platform isn't supported in Germany cloud..."
+        }
+        else {
+            $RequiredModules += "Microsoft.PowerApps.Administration.PowerShell"
+        }
+    }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
     $ModuleCheckResult = @()
@@ -1075,6 +1085,7 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 1..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
+            "USGovGCC"     {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "USGovGCCHigh" {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "USGovDoD"     {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "Germany"      {Connect-MsolService -AzureEnvironment AzureGermanyCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
@@ -1109,6 +1120,7 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2..."
         switch ($O365EnvironmentName) {
             "Commercial"   {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+            "USGovGCC"     {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
             "USGovDoD"     {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
             "Germany"      {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
@@ -1143,6 +1155,7 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to SCC..."
         switch ($O365EnvironmentName) {
             "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+            "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
             "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
             "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common | Out-Null;break}
@@ -1179,6 +1192,7 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to Exchange..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+            "USGovGCC"     {Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "Germany"      {Connect-ExchangeOnline -ExchangeEnvironmentName O365GermanyCloud -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
@@ -1219,6 +1233,7 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+            "USGovGCC"     {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "Germany"      {Connect-SPOService -Url $adminUrl -Region Germany -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1254,6 +1269,7 @@ Function Test-Connections {
         $InitialDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovGCC"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
             "USGovGCCHigh" {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
             "USGovDoD"     {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
             #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
@@ -1284,6 +1300,48 @@ Function Test-Connections {
             TestCommandErrors=$CommandError
         }
     }
+
+    <#
+    
+        Power Apps
+    
+    #>
+    If($Bypass -notcontains 'PowerApps') {
+        if ($O365EnvironmentName -eq 'Germany') {
+            Write-Host "$(Get-Date) Skipping connection to Power Apps because it is not supported in Germany cloud..."
+        }
+        else {
+            # Reset vars
+            $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+
+            Write-Host "$(Get-Date) Connecting to Power Apps..."
+            switch ($O365EnvironmentName) {
+                "Commercial"   {$PAConnection = Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCC"     {$PAConnection = Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint usgov | Out-Null;break}
+                "USGovGCCHigh" {$PAConnection = Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint usgovhigh | Out-Null;break}
+                "USGovDoD"     {$PAConnection = Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint dod | Out-Null;break}
+                #"Germany"     {"Power Platform is not available in Germany" | Out-Null;break}
+                "China"        {$PAConnection = Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint china | Out-Null}
+            }
+
+            # If no error, try test command
+            If($ConnectError) { $Connect = $False; $Command = $False} Else { 
+                $Connect = $True 
+                # Test command can be run by non-admin without error, but no data is returned
+                # Check if data is returned to determine if an admin connected
+                $cmdResult = Get-AdminPowerAppEnvironment -ErrorAction SilentlyContinue -ErrorVariable CommandError
+                If($CommandError -or -not($cmdResult)) { $Command = $False } Else { $Command = $True }
+            }
+
+            $Connections += New-Object -TypeName PSObject -Property @{
+                Name="PowerApps"
+                Connected=$Connect
+                ConnectErrors=$ConnectError
+                TestCommand=$Command
+                TestCommandErrors=$CommandError
+            }
+        }
+    }    
 
     Return $Connections
 }
@@ -1516,7 +1574,8 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
     [Parameter(ParameterSetName='AzureADAppOnly')]
-        [ValidateSet("Commercial", "USGovGCCHigh", "USGovDoD", "Germany", "China")][string]$O365EnvironmentName="Commercial",
+    [Parameter(ParameterSetName='ModulesOnly')]
+        [ValidateSet("Commercial", "USGovGCC", "USGovGCCHigh", "USGovDoD", "Germany", "China")][string]$O365EnvironmentName="Commercial",
     [Parameter(ParameterSetName='ConnectOnly')]
         [Switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
@@ -1637,7 +1696,7 @@ Function Install-SOAPrerequisites
         $ModuleCheckResult = @(Get-ModuleStatus -ModuleName "ActiveDirectory")
         $ModuleCheckResult | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
 
-        If($ModuleCheckResult.InstalledVersion -ne $Null) {
+        If($null -ne $ModuleCheckResult.InstalledVersion) {
             Write-Host "$(Get-Date) ActiveDirectory module is already installed"
         }
         Else {
@@ -1740,7 +1799,7 @@ Function Install-SOAPrerequisites
 
         Write-Host "$(Get-Date) Checking modules..."
 
-        $ModuleCheckResult = Invoke-SOAModuleCheck
+        $ModuleCheckResult = Invoke-SOAModuleCheck -O365EnvironmentName $O365EnvironmentName
 
         $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
         $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true -or $_.Conflict -eq $True})
@@ -1754,7 +1813,7 @@ Function Install-SOAPrerequisites
                 Invoke-ModuleFix $Modules_Error
 
                 Write-Host "$(Get-Date) Post-remediation prerequisites check..."
-                $ModuleCheckResult = Invoke-SOAModuleCheck
+                $ModuleCheckResult = Invoke-SOAModuleCheck -O365EnvironmentName $O365EnvironmentName
                 $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
                 $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true})
             }
