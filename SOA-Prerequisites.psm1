@@ -1268,29 +1268,30 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
         $InitialDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
         switch ($O365EnvironmentName) {
-            "Commercial"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovGCC"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovGCCHigh" {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovDoD"     {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue;break}
+            "Commercial"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovGCC"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovGCCHigh" {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovDoD"     {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
             #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
             "China"        {Write-Host "Teams is not available in 21Vianet offering";break}
-            default        {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable $ConnectError -ErrorAction:SilentlyContinue}
+            default        {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue}
         }
         #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
-    # Run test command that uses RPS
-        If(Get-Command "Get-CsTenantFederationConfiguration") {
-            If(Get-CsTenantFederationConfiguration) {
-                $Command = $True
-            } Else {
-                $Command = $False
-            }
-        } Else {
+        # If no error, try test command
+        if ($ConnectError) {
+            $Connect = $False
             $Command = $False
         }
-
-    # Check for connection after command test because RPS is not established until after a cmdlet that needs it is run
-    If((Get-PSSession | Where-Object {$_.ComputerName -like "*teams.*"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
+        else { 
+            $Connect = $true
+            if (Get-CsTenantFederationConfiguration) {
+                $Command = $True
+            } 
+            else {
+                $Command = $False
+            }
+        }
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="Teams"
