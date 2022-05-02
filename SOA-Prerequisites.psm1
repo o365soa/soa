@@ -1326,12 +1326,26 @@ Function Test-Connections {
             }
 
             # If no error, try test command
-            If($ConnectError) { $Connect = $False; $Command = $False} Else { 
+            if ($ConnectError) { $Connect = $False; $Command = $False} Else { 
                 $Connect = $True 
                 # Test command can be run by non-admin without error, but no data is returned
                 # Check if data is returned to determine if an admin connected
                 $cmdResult = Get-AdminPowerAppEnvironment -ErrorAction SilentlyContinue -ErrorVariable CommandError
-                If($CommandError -or -not($cmdResult)) { $Command = $False } Else { $Command = $True }
+                if ($CommandError -or -not($cmdResult)) {
+                    # Cmdlet may not return data if no PA license assigned or user has not been to PPAC before
+                    Write-Warning -Message "No data was returned when running the test command. This can occur if the admin has never used the Power Platform Admin Center (PPAC). Please go to https://aka.ms/ppac and sign in as the Global administrator or Dynamics 365 administrator account you used to connect to Power Platform in PowerShell.  Then return here to continue."
+                    Read-Host -Prompt "Press Enter after you have navigated to PPAC and signed in with the adminstrator account used above to connect to Power Platform in PowerShell."
+                    $cmdResult = Get-AdminPowerAppEnvironment -ErrorAction SilentlyContinue -ErrorVariable CommandError
+                    if ($CommandError -or -not($cmdResult)) {
+                        $Command = $False
+                    }
+                    else {
+                        $Command = $true
+                    }
+                }
+                else {
+                    $Command = $True
+                }
             }
 
             $Connections += New-Object -TypeName PSObject -Property @{
