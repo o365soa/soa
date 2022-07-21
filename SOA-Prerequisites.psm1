@@ -546,7 +546,7 @@ Function Invoke-AppTokenRolesCheck {
 
         Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Graph endpoint"
         # Obtain the token
-        $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -ClearTokenCache -O365EnvironmentName $O365EnvironmentName
+        $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -O365EnvironmentName $O365EnvironmentName
 
         If($Null -ne $Token)
         {
@@ -605,7 +605,7 @@ Function Invoke-AppTokenRolesCheck {
             Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Security endpoint"
 
             # Obtain the token
-            $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $SecurityResource -ClearTokenCache -O365EnvironmentName $O365EnvironmentName
+            $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $SecurityResource -O365EnvironmentName $O365EnvironmentName
 
             If($Null -ne $Token)
             {
