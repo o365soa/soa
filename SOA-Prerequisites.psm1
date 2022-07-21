@@ -261,7 +261,7 @@ Function Get-MSALAccessToken {
         "China"        {$authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
     }
 
-    Write-Verbose "$(Get-Date) Get-MSALAccessToken Tenant $TenantName ClientID $ClientID Resource $Resource TokenCache $ClearTokenCache SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
+    Write-Verbose "$(Get-Date) Get-MSALAccessToken Tenant $TenantName ClientID $ClientID Resource $Resource SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
 
     $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).Build()
 
