@@ -160,6 +160,7 @@ Function Invoke-LoadAdal {
     
         Finds a suitable ADAL library from AzureAD Preview and uses that
         This prevents us having to ship the .dll's ourself.
+        Deprecated Function and replaced with MSAL.
 
     #>
     $AadModule = Get-Module -Name "AzureADPreview" -ListAvailable
@@ -173,10 +174,34 @@ Function Invoke-LoadAdal {
     [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
 }
 
+Function Import-MSAL {
+    <#
+    
+        Finds a suitable MSAL library from Exchange Online and uses that
+        This prevents us having to ship the .dll's ourself.
+
+    #>
+
+    # Add support for the .Net Core version of the library. Variable doesn't exist in PowerShell v4 and below, 
+    # so if it doesn't exist it is assumed that 'Desktop' edition is used
+    If ($PSEdition -eq 'Core'){
+        $Folder = "netCore"
+    } Else {
+        $Folder = "NetFramework"
+    }
+
+    $ExoModule = Get-Module -Name "ExchangeOnlineManagement" -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+    $MSAL = Join-Path $ExoModule.ModuleBase "$($Folder)\Microsoft.Identity.Client.dll"
+
+    # Load the MSAL library
+    Write-Verbose "$(Get-Date) Loading module from $MSAL"
+    Try {Add-Type -LiteralPath $MSAL | Out-Null} Catch {}
+}
+
 Function Get-AccessToken {
     <#
     
-        Fetch the Access Token using ADAL libraries
+        Fetch the Access Token using ADAL libraries. Deprecated Function and replaced with MSAL.
     
     #>
     Param(
@@ -209,6 +234,44 @@ Function Get-AccessToken {
     $authResult         = $authContext.AcquireTokenAsync($Resource,$ClientCredential)
 
     return $authResult.Result
+}
+
+Function Get-MSALAccessToken {
+    <#
+    
+        Fetch an Access Token using MSAL libraries
+    
+    #>
+    Param(
+        $TenantName,
+        $ClientID,
+        $Secret,
+        $Resource,
+        [string]$O365EnvironmentName
+    )
+
+    Import-MSAL
+
+    switch ($O365EnvironmentName) {
+        "Commercial"   {$authority = "https://login.microsoftonline.com/$TenantName";break}
+        "USGovGCC"     {$authority = "https://login.microsoftonline.com/$TenantName";break}
+        "USGovGCCHigh" {$authority = "https://login.microsoftonline.us/$TenantName";break}
+        "USGovDoD"     {$authority = "https://login.microsoftonline.us/$TenantName";break}
+        "Germany"      {$authority = "https://login.microsoftonline.de/$TenantName";break}
+        "China"        {$authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
+    }
+
+    Write-Verbose "$(Get-Date) Get-MSALAccessToken Tenant $TenantName ClientID $ClientID Resource $Resource SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
+
+    $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).Build()
+
+    $Scopes = New-Object System.Collections.Generic.List[string]
+    $Scopes.Add("$($Resource)/.default")
+
+    $token = $ccApp.AcquireTokenForClient($Scopes).ExecuteAsync().GetAwaiter().GetResult()
+    If ($token){Write-Verbose "$(Get-Date) Successfully got a token using MSAL for $($Resource)"}
+
+    return $token
 }
 
 Function Get-AzureADConnected {
@@ -260,8 +323,8 @@ Function Invoke-GraphTest {
     }
     $Uri = "$Base/beta/security/secureScores?`$top=1"
 
-    $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $Secret -Resource $Resource -O365EnvironmentName $O365EnvironmentName
-    $headerParams = @{'Authorization'="$($Token.AccessTokenType) $($Token.AccessToken)"}
+    $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $Secret -Resource $Resource -O365EnvironmentName $O365EnvironmentName
+    $headerParams = @{'Authorization'="$($Token.TokenType) $($Token.AccessToken)"}
 
     $Result = (Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $Uri -ErrorAction:SilentlyContinue -ErrorVariable:RunError)
 
@@ -483,7 +546,7 @@ Function Invoke-AppTokenRolesCheck {
 
         Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Graph endpoint"
         # Obtain the token
-        $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -ClearTokenCache -O365EnvironmentName $O365EnvironmentName
+        $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -O365EnvironmentName $O365EnvironmentName
 
         If($Null -ne $Token)
         {
@@ -542,7 +605,7 @@ Function Invoke-AppTokenRolesCheck {
             Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Security endpoint"
 
             # Obtain the token
-            $Token = Get-AccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $SecurityResource -ClearTokenCache -O365EnvironmentName $O365EnvironmentName
+            $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $SecurityResource -O365EnvironmentName $O365EnvironmentName
 
             If($Null -ne $Token)
             {
