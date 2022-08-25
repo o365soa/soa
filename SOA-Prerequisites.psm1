@@ -155,25 +155,6 @@ Function Reset-AppSecret {
     Return $clientsecret.Value
 }
 
-Function Invoke-LoadAdal {
-    <#
-    
-        Finds a suitable ADAL library from AzureAD Preview and uses that
-        This prevents us having to ship the .dll's ourself.
-        Deprecated Function and replaced with MSAL.
-
-    #>
-    $AadModule = Get-Module -Name "AzureADPreview" -ListAvailable
-
-    $Latest_Version = ($AadModule | Select-Object version | Sort-Object)[-1]
-    $aadModule      = $AadModule | Where-Object { $_.version -eq $Latest_Version.version }
-    $adal           = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.dll"
-    $adalforms      = Join-Path $AadModule.ModuleBase "Microsoft.IdentityModel.Clients.ActiveDirectory.Platform.dll"
-
-    [System.Reflection.Assembly]::LoadFrom($adal) | Out-Null
-    [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
-}
-
 Function Import-MSAL {
     <#
     
@@ -196,44 +177,6 @@ Function Import-MSAL {
     # Load the MSAL library
     Write-Verbose "$(Get-Date) Loading module from $MSAL"
     Try {Add-Type -LiteralPath $MSAL | Out-Null} Catch {}
-}
-
-Function Get-AccessToken {
-    <#
-    
-        Fetch the Access Token using ADAL libraries. Deprecated Function and replaced with MSAL.
-    
-    #>
-    Param(
-        $TenantName,
-        $ClientID,
-        $Secret,
-        $Resource,
-        [Switch]$ClearTokenCache, # useful if we need to get newly added scopes
-        [string]$O365EnvironmentName
-    )
-
-    Write-Verbose "$(Get-Date) Get-AccessToken Tenant $TenantName ClientID $ClientID Resource $Resource TokenCache $ClearTokenCache SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
-
-    if (!$CredPrompt){$CredPrompt = 'Auto'}
-
-    switch ($O365EnvironmentName) {
-        "Commercial"   {$authority = "https://login.microsoftonline.com/$TenantName";break}
-        "USGovGCCHigh" {$authority = "https://login.microsoftonline.us/$TenantName";break}
-        "USGovDoD"     {$authority = "https://login.microsoftonline.us/$TenantName";break}
-        "Germany"      {$authority = "https://login.microsoftonline.de/$TenantName";break}
-        "China"        {$authority = "https://login.partner.microsoftonline.cn/$TenantName"}
-    }
-    $authContext        = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority   
-    
-    If($ClearTokenCache) {
-        $authContext.TokenCache.Clear()
-    }
-    
-    $ClientCredential   = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.ClientCredential" -ArgumentList @($ClientID,$Secret)
-    $authResult         = $authContext.AcquireTokenAsync($Resource,$ClientCredential)
-
-    return $authResult.Result
 }
 
 Function Get-MSALAccessToken {
@@ -1965,7 +1908,7 @@ Function Install-SOAPrerequisites
         Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
         $AppRoles = Get-RequiredAppPermissions -HasATPP2License ($ATPLicensed) -O365EnvironmentName $O365EnvironmentName
 
-        Invoke-LoadAdal
+        Import-MSAL
 
         Write-Host "$(Get-Date) Checking Azure AD Application..."
 
