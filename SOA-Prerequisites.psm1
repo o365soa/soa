@@ -1205,7 +1205,7 @@ Function Test-Connections {
             "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null}
         }
        
-        If((Get-PSSession | Where-Object {$_.ComputerName -like "outlook.office*" -or $_.ComputerName -like "webmail.apps.mil" -or $_.ComputerName -like "partner.outlook.cn"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
+        If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") { $Connect = $True } Else { $Connect = $False }
 
         # Run test command
         If(Get-Command "Get-OrganizationConfig") {
