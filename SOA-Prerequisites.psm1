@@ -842,10 +842,12 @@ function Get-LicenseStatus {
     foreach ($tSku in $targetSkus) {
         foreach ($sku in $subscribedSku) {
             if ($sku.PrepaidUnits.Enabled -gt 0 -or $sku.PrepaidUnits.Warning -gt 0 -and $sku.SkuPartNumber -match $tSku) {
+                Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
                 return $true
             }
         }
     }
+    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: False "
     return $false
 }
 
