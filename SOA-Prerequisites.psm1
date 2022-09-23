@@ -831,7 +831,7 @@ function Get-LicenseStatus {
     param ($LicenseType)
     if ($LicenseType -eq 'ATPP2') {
         # SKUs that start with strings include Defender P2 to be able to use the Defender API
-        $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','THREAT_INTELLIGENCE','M365_SECURITY_COMPLIANCE','Microsoft_365 G5_Security')
+        $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','SPE_F5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','THREAT_INTELLIGENCE','M365_SECURITY_COMPLIANCE','Microsoft_365 G5_Security','M365_G5')
     }
     else {
         Write-Error -Message "$(Get-Date) Invalid license type specified"
@@ -842,10 +842,12 @@ function Get-LicenseStatus {
     foreach ($tSku in $targetSkus) {
         foreach ($sku in $subscribedSku) {
             if ($sku.PrepaidUnits.Enabled -gt 0 -or $sku.PrepaidUnits.Warning -gt 0 -and $sku.SkuPartNumber -match $tSku) {
+                Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
                 return $true
             }
         }
     }
+    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: False "
     return $false
 }
 
