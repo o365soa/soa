@@ -196,22 +196,36 @@ Function Get-MSALAccessToken {
     Import-MSAL
 
     switch ($O365EnvironmentName) {
-        "Commercial"   {$authority = "https://login.microsoftonline.com/$TenantName";break}
-        "USGovGCC"     {$authority = "https://login.microsoftonline.com/$TenantName";break}
-        "USGovGCCHigh" {$authority = "https://login.microsoftonline.us/$TenantName";break}
-        "USGovDoD"     {$authority = "https://login.microsoftonline.us/$TenantName";break}
-        "Germany"      {$authority = "https://login.microsoftonline.de/$TenantName";break}
-        "China"        {$authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
+        "Commercial"   {$Authority = "https://login.microsoftonline.com/$TenantName";break}
+        "USGovGCC"     {$Authority = "https://login.microsoftonline.com/$TenantName";break}
+        "USGovGCCHigh" {$Authority = "https://login.microsoftonline.us/$TenantName";break}
+        "USGovDoD"     {$Authority = "https://login.microsoftonline.us/$TenantName";break}
+        "Germany"      {$Authority = "https://login.microsoftonline.de/$TenantName";break}
+        "China"        {$Authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
     }
 
-    Write-Verbose "$(Get-Date) Get-MSALAccessToken Tenant $TenantName ClientID $ClientID Resource $Resource SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
+    Write-Verbose "$(Get-Date) Get-MSALAccessToken function called from the pre-reqs module - Tenant: $TenantName ClientID: $ClientID Resource: $Resource SecretLength: $($Secret.Length) O365EnvironmentName: $O365EnvironmentName"
 
     $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).Build()
 
     $Scopes = New-Object System.Collections.Generic.List[string]
     $Scopes.Add("$($Resource)/.default")
 
-    $token = $ccApp.AcquireTokenForClient($Scopes).ExecuteAsync().GetAwaiter().GetResult()
+    $RetryDelay = 15
+    $TokenAttempt = 1
+    Do {
+        Try {
+            Write-Verbose "Attempt #$($TokenAttempt) to get an Access Token using MSAL for $($Resource)"
+            $TokenAttempt++
+            $token = $ccApp.AcquireTokenForClient($Scopes).ExecuteAsync().GetAwaiter().GetResult()
+        }
+        Catch {
+            Write-Verbose "$(Get-Date) Failed to get a token using MSAL. Sleeping for $($RetryDelay) seconds and then trying again"
+            Start-Sleep $RetryDelay
+        }
+    }
+    While (!$token -And $TokenAttempt -lt 12)
+
     If ($token){Write-Verbose "$(Get-Date) Successfully got a token using MSAL for $($Resource)"}
 
     return $token
