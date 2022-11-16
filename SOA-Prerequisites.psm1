@@ -102,9 +102,9 @@ function Get-SPOTenantName
         Used to determine what the SharePoint Tenant Name is during connection tests
     
     #>
-
-    $sku = (Get-MsolAccountSku -ErrorAction:SilentlyContinue)[0]
-    return $sku.AccountName
+    
+    $domain = ((Get-AcceptedDomain | Where-Object {$_.InitialDomain -eq $True}).DomainName)
+    return ($domain -Split ".onmicrosoft.com")[0]
 
 }
 
