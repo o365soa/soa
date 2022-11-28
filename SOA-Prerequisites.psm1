@@ -103,7 +103,7 @@ function Get-SPOTenantName
     
     #>
     
-    $domain = ((Get-AcceptedDomain | Where-Object {$_.InitialDomain -eq $True}).DomainName)
+    $domain = ((Get-AzureADDomain | Where-Object {$_.IsInitial -eq $True}).Name)
     return ($domain -Split ".onmicrosoft.com")[0]
 
 }
