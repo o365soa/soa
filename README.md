@@ -35,6 +35,10 @@ In order to install the module and run the prerequisite script, you must have:
    
       `Install-Module PowerShellGet`
 
+### Permissions needed to run the prerequisites
+
+1. The prerequisites require an account with the **Global Administrator** role. 
+
 ### Running the prerequisite script
 
 1. Load a PowerShell prompt as administrator (this is important, in order to update/install modules)
