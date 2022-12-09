@@ -150,9 +150,6 @@ Function Reset-SOAAppSecret {
 
     # Provision a short lived credential +48 hrs.
     $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
-       
-    Write-Host "$(Get-Date) Sleeping for 30 seconds to allow for replication of the application's new client secret..."
-    Start-Sleep 30
 
     Return $clientsecret.Value
 }
@@ -1961,6 +1958,8 @@ Function Install-SOAPrerequisites
 
             # Reset secret
             $clientsecret = Reset-SOAAppSecret -App $AzureADApp -Task "Prereq"
+            Write-Host "$(Get-Date) Sleeping for 30 seconds to allow for replication of the application's new client secret..."
+            Start-Sleep 30
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
