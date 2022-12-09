@@ -149,10 +149,25 @@ Function Reset-AppSecret {
 
     # Provision a short lived credential +48 hrs.
     $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "Prereq on $(Get-Date -Format "dd-MMM-yyyy")"
-        
+       
+    Write-Host "$(Get-Date) Sleeping for 30 seconds to allow for replication of the application's new client secret..."
     Start-Sleep 30
 
     Return $clientsecret.Value
+}
+
+function Remove-AppSecret {
+    # Removes any client secrets associated with the application
+    param ($app)
+
+    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId
+    foreach ($secret in $secrets) {
+        # Suppress errors in case a secret no longer exists
+        try {
+            Remove-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId -KeyId $secret.KeyId
+        }
+        catch {}
+    }
 }
 
 Function Import-MSAL {
@@ -1985,6 +2000,8 @@ Function Install-SOAPrerequisites
             Write-Host "$(Get-Date) Performing Graph Test..."
             $CheckResults += Invoke-GraphTest -AzureADApp $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
 
+            # Remove client secret
+            Remove-AppSecret -app $AzureADApp
         } 
         Else 
         {
