@@ -137,7 +137,7 @@ function Get-SharePointAdminUrl
     return $url
 }
 
-Function Reset-AppSecret {
+Function Reset-SOAAppSecret {
     <#
     
         This function creates a new secret for the application
@@ -156,7 +156,7 @@ Function Reset-AppSecret {
     Return $clientsecret.Value
 }
 
-function Remove-AppSecret {
+function Remove-SOAAppSecret {
     # Removes any client secrets associated with the application
     param ($app)
 
@@ -1959,7 +1959,7 @@ Function Install-SOAPrerequisites
             }
 
             # Reset secret
-            $clientsecret = Reset-AppSecret -App $AzureADApp
+            $clientsecret = Reset-SOAAppSecret -App $AzureADApp
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
@@ -2001,7 +2001,7 @@ Function Install-SOAPrerequisites
             $CheckResults += Invoke-GraphTest -AzureADApp $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
 
             # Remove client secret
-            Remove-AppSecret -app $AzureADApp
+            Remove-SOAAppSecret -app $AzureADApp
         } 
         Else 
         {
