@@ -1446,10 +1446,12 @@ Function Get-RequiredAppPermissions {
         Name="SecurityIncident.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-    $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
-        Name="Incident.Read.All"
-        Resource="8ee8fdad-f234-4243-8f3b-15c294843740" # Microsoft Threat Protection
+    if ($HasATPP2License -eq $true -and $DefenderAvailable -eq $true) {
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
+            Name="Incident.Read.All"
+            Resource="8ee8fdad-f234-4243-8f3b-15c294843740" # Microsoft Threat Protection
+        }
     }
 
     Return $AppRoles
