@@ -1446,6 +1446,16 @@ Function Get-RequiredAppPermissions {
         Name="SecurityIncident.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
+    #Defender API and threat investigations not currently available in sovereign clouds, only Commercial. Update if/as endpoints become available.
+    $DefenderAvailable = $false
+    switch ($O365EnvironmentName) {
+        "Commercial"   {$DefenderAvailable=$true;break}
+        "USGovGCCHigh" {$DefenderAvailable=$false;break}
+        "USGovDoD"     {$DefenderAvailable=$false;break}
+        "Germany"      {$DefenderAvailable=$false;break}
+        "China"        {$DefenderAvailable=$false}
+    }
     if ($HasATPP2License -eq $true -and $DefenderAvailable -eq $true) {
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
