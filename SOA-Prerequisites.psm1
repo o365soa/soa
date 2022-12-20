@@ -1958,8 +1958,8 @@ Function Install-SOAPrerequisites
 
             # Reset secret
             $clientsecret = Reset-SOAAppSecret -App $AzureADApp -Task "Prereq"
-            Write-Host "$(Get-Date) Sleeping for 30 seconds to allow for replication of the application's new client secret..."
-            Start-Sleep 30
+            Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
+            Start-Sleep 10
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
