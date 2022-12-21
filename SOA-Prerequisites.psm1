@@ -137,22 +137,35 @@ function Get-SharePointAdminUrl
     return $url
 }
 
-Function Reset-AppSecret {
+Function Reset-SOAAppSecret {
     <#
     
         This function creates a new secret for the application
     
     #>
     Param (
-        $App
+        $App,
+        $Task
     )
 
     # Provision a short lived credential +48 hrs.
-    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "Prereq on $(Get-Date -Format "dd-MMM-yyyy")"
-        
-    Start-Sleep 30
+    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
 
     Return $clientsecret.Value
+}
+
+function Remove-SOAAppSecret {
+    # Removes any client secrets associated with the application
+    param ($app)
+
+    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId
+    foreach ($secret in $secrets) {
+        # Suppress errors in case a secret no longer exists
+        try {
+            Remove-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId -KeyId $secret.KeyId
+        }
+        catch {}
+    }
 }
 
 Function Import-MSAL {
@@ -1951,7 +1964,9 @@ Function Install-SOAPrerequisites
             }
 
             # Reset secret
-            $clientsecret = Reset-AppSecret -App $AzureADApp
+            $clientsecret = Reset-SOAAppSecret -App $AzureADApp -Task "Prereq"
+            Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
+            Start-Sleep 10
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
@@ -2038,6 +2053,8 @@ Function Install-SOAPrerequisites
                     }
                 }
             }
+            # Remove client secret
+            Remove-SOAAppSecret -app $AzureADApp
         } 
         Else 
         {
