@@ -274,8 +274,6 @@ Function Invoke-GraphTest {
     $Success = $False
     $RunError = $Null
 
-    Write-Host "$(Get-Date) Testing Graph..."
-    
     switch ($O365EnvironmentName) {
         "Commercial"   {$Resource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$Resource = "https://graph.microsoft.us/";break}
@@ -1078,6 +1076,10 @@ Function Invoke-SOAModuleCheck {
             $RequiredModules += "Microsoft.PowerApps.Administration.PowerShell"
         }
     }
+    If($Bypass -notcontains "Graph") {
+        $RequiredModules += "Microsoft.Graph.Authentication"
+        $RequiredModules += "Microsoft.Graph.Security"
+    }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
     $ModuleCheckResult = @()
@@ -1188,6 +1190,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
+        Get-PSSession | Where-Object {$_.ComputerName -like "*protection.o*"} | Remove-PSSession
         switch ($O365EnvironmentName) {
             "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
@@ -1390,7 +1393,7 @@ Function Test-Connections {
                 TestCommandErrors=$CommandError
             }
         }
-    }    
+    }
 
     Return $Connections
 }
@@ -1451,6 +1454,11 @@ Function Get-RequiredAppPermissions {
         Name="Policy.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="45cc0394-e837-488b-a098-1918f48d186c"
+        Name="SecurityIncident.Read.All"
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
 
     #Defender API and threat investigations not currently available in sovereign clouds, only Commercial. Update if/as endpoints become available.
     $DefenderAvailable = $false
@@ -1461,13 +1469,12 @@ Function Get-RequiredAppPermissions {
         "Germany"      {$DefenderAvailable=$false;break}
         "China"        {$DefenderAvailable=$false}
     }
-
     if ($HasATPP2License -eq $true -and $DefenderAvailable -eq $true) {
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
             Name="Incident.Read.All"
             Resource="8ee8fdad-f234-4243-8f3b-15c294843740" # Microsoft Threat Protection
-        }  
+        }
     }
 
     Return $AppRoles
@@ -2000,6 +2007,52 @@ Function Install-SOAPrerequisites
             Write-Host "$(Get-Date) Performing Graph Test..."
             $CheckResults += Invoke-GraphTest -AzureADApp $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
 
+
+            # Check that the Graph SDK modules can connect
+            switch ($O365EnvironmentName) {
+                "Commercial"   {$Resource = "https://graph.microsoft.com";break}
+                "USGovGCC"     {$Resource = "https://graph.microsoft.com";break}
+                "USGovGCCHigh" {$Resource = "https://graph.microsoft.us";break}
+                "USGovDoD"     {$Resource = "https://dod-graph.microsoft.us";break}
+                "Germany"      {$Resource = "https://graph.microsoft.com";break}
+                "China"        {$Resource = "https://microsoftgraph.chinacloudapi.cn"}
+            }
+
+            $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName 
+
+            switch ($O365EnvironmentName) {
+                "Commercial"   {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCC"     {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCCHigh" {Connect-MgGraph -AccessToken $Token.AccessToken -Environment "USGov" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovDoD"     {Connect-MgGraph -AccessToken $Token.AccessToken -Environment "USGovDoD" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "Germany"      {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "China"        {Connect-MgGraph -AccessToken $Token.AccessToken -Environment "China" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+            }
+
+            If($ConnectError){
+                $CheckResults += New-Object -Type PSObject -Property @{
+                    Check="Graph SDK Connection"
+                    Pass=$False
+                }
+            } Else {
+                $CheckResults += New-Object -Type PSObject -Property @{
+                    Check="Graph SDK Connection"
+                    Pass=$True
+                }
+
+                if (Get-MgSecuritySecureScore -Top 1) {
+                    $CheckResults += New-Object -Type PSObject -Property @{
+                        Check="Graph SDK Command"
+                        Pass=$True
+                    }
+                } 
+                else {
+                    $CheckResults += New-Object -Type PSObject -Property @{
+                        Check="Graph SDK Command"
+                        Pass=$False
+                    }
+                }
+            }
             # Remove client secret
             Remove-SOAAppSecret -app $AzureADApp
         } 
