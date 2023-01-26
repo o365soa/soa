@@ -329,7 +329,7 @@ Function Set-AzureADAppPermission {
     $PermissionSet = $False
     $ConsentPerformed = $False
 
-    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
     <#
     
@@ -411,7 +411,7 @@ Function Invoke-AppPermissionCheck
 
     $Provisioned = $True
     
-    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
     If($NewPermission)
@@ -501,7 +501,7 @@ Function Invoke-AppTokenRolesCheck {
         "China"        {$GraphResource = "https://microsoftgraph.chinacloudapi.cn/"}
     }
 
-    $Roles = Get-RequiredAppPermissions -HasATPP2License $ATPLicensed -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
     # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
     $MaxTime = 300
@@ -549,76 +549,9 @@ Function Invoke-AppTokenRolesCheck {
             Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck loop - Counter $Counter maxTime $MaxTime"
         }
     }
-    
-    $endpointAvailable = $false
-    switch ($O365EnvironmentName) {
-        "Commercial"   {$SecurityResource = "https://api.security.microsoft.com";$endpointAvailable=$true;break}
-        "USGovGCCHigh" {$SecurityResource = "";$endpointAvailable=$false;break}
-        "USGovDoD"     {$SecurityResource = "";$endpointAvailable=$false;break}
-        "Germany"      {$SecurityResource = "";$endpointAvailable=$false;break}
-        "China"        {$SecurityResource = "";$endpointAvailable=$false}
-    }
-    #Defender API is currently not available for sovereign clouds.  Once endpoints are available, they can be populated and set to True.
 
-    # Check Security endpoint
-    if ($ATPLicensed -eq $true -and $endpointAvailable -eq $true) {
-        
-        $MaxTime = 300
-        $SleepTime = 10
-        $Counter = 0
-        
-        While($Counter -lt $MaxTime)
-        {
-
-            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Security endpoint"
-
-            # Obtain the token
-            $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $SecurityResource -O365EnvironmentName $O365EnvironmentName
-
-            If($Null -ne $Token)
-            {
-                # Perform decode from JWT
-                $tokobj = ConvertFrom-JWT -token $Token
-
-                Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Token JWT $($tokenArray)"
-
-                # Check the roles are in the token, check for MTP at this stage.
-                ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "8ee8fdad-f234-4243-8f3b-15c294843740"})) {
-                    If($tokobj.Roles -notcontains $Role.Name) {
-                        Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck missing $($Role.Name)"
-                        $MissingRoles += $Role
-                    }
-                }
-            }
-            If($MissingRoles.Count -eq 0 -and $Null -ne $Token)
-            {
-                $SecurityResult = $True
-            }
-            Else 
-            {
-                $SecurityResult = $False
-            }
-
-            If($SecurityResult -eq $True)
-            {
-                Break
-            } 
-            Else 
-            {
-                Start-Sleep $SleepTime
-                $Counter += $SleepTime
-                Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck loop - Counter $Counter maxTime $MaxTime"
-            }
-        }
-    }
-
-    # Check if Graph and, if applicable, Security pass.  If Graph fails, return false regardless of Security result
     if ($GraphResult) {
         $return = $true
-        if ($ATPLicensed -eq $true -and $endpointAvailable -eq $true) {
-            if ($SecurityResult) {$return = $true}
-            else {$return = $false}
-        }
     }
     else {$return = $false}
     
@@ -1401,7 +1334,6 @@ Function Test-Connections {
 Function Get-RequiredAppPermissions {
     param
     (
-    $HasATPP2License,
     [string]$O365EnvironmentName="Commercial"
     )
 
@@ -1458,23 +1390,6 @@ Function Get-RequiredAppPermissions {
         ID="45cc0394-e837-488b-a098-1918f48d186c"
         Name="SecurityIncident.Read.All"
         Resource="00000003-0000-0000-c000-000000000000" # Graph
-    }
-
-    #Defender API and threat investigations not currently available in sovereign clouds, only Commercial. Update if/as endpoints become available.
-    $DefenderAvailable = $false
-    switch ($O365EnvironmentName) {
-        "Commercial"   {$DefenderAvailable=$true;break}
-        "USGovGCCHigh" {$DefenderAvailable=$false;break}
-        "USGovDoD"     {$DefenderAvailable=$false;break}
-        "Germany"      {$DefenderAvailable=$false;break}
-        "China"        {$DefenderAvailable=$false}
-    }
-    if ($HasATPP2License -eq $true -and $DefenderAvailable -eq $true) {
-        $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID="a9790345-4595-42e4-971a-ccdc79f19b7c"
-            Name="Incident.Read.All"
-            Resource="8ee8fdad-f234-4243-8f3b-15c294843740" # Microsoft Threat Protection
-        }
     }
 
     Return $AppRoles
@@ -1942,7 +1857,7 @@ Function Install-SOAPrerequisites
 
         $ATPLicensed = Get-LicenseStatus -LicenseType ATPP2
         Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
-        $AppRoles = Get-RequiredAppPermissions -HasATPP2License ($ATPLicensed) -O365EnvironmentName $O365EnvironmentName
+        $AppRoles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
         Import-MSAL
 
