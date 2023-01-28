@@ -88,7 +88,6 @@ The scope of this application is limited to the following:
 * **Directory.Read.All** (This scope is used to get sign-in activity for user and guest accounts. Both this scope and the previous scope are required in order to get sign-in activity.)
 * **Policy.Read.All** (This scope is used to get Azure AD authorization and conditional access policies.)
 * **SecurityIncident.Read.All** (This scope is used to get Defender security incidents.)
-* **Incident.Read.All** (This scope is used to get Defender security incidents. This scope will no longer be required, instead using SecurityIncident.Read.All, but is still being added for backwards compatibility for a short time.)
 
 ### Azure AD application security
 
