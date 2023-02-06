@@ -1300,12 +1300,13 @@ Function Test-Connections {
             if ($ConnectError) { $Connect = $False; $Command = ""} Else { 
                 $Connect = $True 
                 # Check if data is returned
-                $cmdResult = Get-TenantSettings -ErrorAction SilentlyContinue -ErrorVariable CommandError
+                # Ensure that the correct module is used as Get-DlpPolicy also exists within the Exchange module
+                $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction:SilentlyContinue -ErrorVariable:CommandError
                 if ($CommandError -or -not($cmdResult)) {
                     # Cmdlet may not return data if no PA license assigned or user has not been to PPAC before
                     Write-Warning -Message "No data was returned when running the test command. This can occur if the admin has never used the Power Platform Admin Center (PPAC). Please go to https://aka.ms/ppac and sign in as the Global administrator or Dynamics 365 administrator account you used to connect to Power Platform in PowerShell.  Then return here to continue."
                     Read-Host -Prompt "Press Enter after you have navigated to PPAC and signed in with the adminstrator account used above to connect to Power Platform in PowerShell."
-                    $cmdResult = Get-TenantSettings -ErrorAction SilentlyContinue -ErrorVariable CommandError
+                    $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction:SilentlyContinue -ErrorVariable:CommandError
                     if ($CommandError -or -not($cmdResult)) {
                         $Command = $False
                     }
