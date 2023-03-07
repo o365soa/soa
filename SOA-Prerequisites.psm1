@@ -128,6 +128,7 @@ function Get-SharePointAdminUrl
         
         switch ($O365EnvironmentName) {
             "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
+            "USGovGCC"     {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
             "USGovGCCHigh" {$url = "https://" + $tenantName + "-admin.sharepoint.us";break}
             "USGovDoD"     {$url = "https://" + $tenantName + "-admin.dps.mil";break}
             "Germany"      {$url = "https://" + $tenantName + "-admin.sharepoint.de";break}
@@ -276,6 +277,7 @@ Function Invoke-GraphTest {
 
     switch ($O365EnvironmentName) {
         "Commercial"   {$Resource = "https://graph.microsoft.com/";break}
+        "USGovGCC"     {$Resource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$Resource = "https://graph.microsoft.us/";break}
         "USGovDoD"     {$Resource = "https://dod-graph.microsoft.us/";break}
         "Germany"      {$Resource = "https://graph.microsoft.de/";break}
@@ -284,6 +286,7 @@ Function Invoke-GraphTest {
 
     switch ($O365EnvironmentName) {
         "Commercial"   {$Base = "https://graph.microsoft.com";break}
+        "USGovGCC"     {$Base = "https://graph.microsoft.com";break}
         "USGovGCCHigh" {$Base = "https://graph.microsoft.us";break}
         "USGovDoD"     {$Base = "https://dod-graph.microsoft.us";break}
         "Germany"      {$Base = "https://graph.microsoft.de";break}
@@ -495,6 +498,7 @@ Function Invoke-AppTokenRolesCheck {
     $MissingRoles = @()
     switch ($O365EnvironmentName) {
         "Commercial"   {$GraphResource = "https://graph.microsoft.com/";break}
+        "USGovGCC"     {$GraphResource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$GraphResource = "https://graph.microsoft.us/";break}
         "USGovDoD"     {$GraphResource = "https://dod-graph.microsoft.us/";break}
         "Germany"      {$GraphResource = "https://graph.microsoft.de/";break}
@@ -594,6 +598,7 @@ Function Invoke-Consent {
 
     switch ($O365EnvironmentName) {
         "Commercial"   {$AuthLocBase = "https://login.microsoftonline.com";break}
+        "USGovGCC"     {$AuthLocBase = "https://login.microsoftonline.com";break}
         "USGovGCCHigh" {$AuthLocBase = "https://login.microsoftonline.us";break}
         "USGovDoD"     {$AuthLocBase = "https://login.microsoftonline.us";break}
         "Germany"      {$AuthLocBase = "https://login.microsoftonline.de";break}
@@ -1849,6 +1854,7 @@ Function Install-SOAPrerequisites
         If((Get-AzureADConnected) -eq $False) {
             switch ($O365EnvironmentName) {
                 "Commercial"   {$AADConnection = Connect-AzureAD | Out-Null;break}
+                "USGovGCC"     {$AADConnection = Connect-AzureAD | Out-Null;break}
                 "USGovGCCHigh" {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
                 "USGovDoD"     {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
                 "Germany"      {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
