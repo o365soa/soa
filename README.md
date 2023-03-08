@@ -2,72 +2,78 @@
 
 ## Introduction
 
-The Office 365 Security Optimization Assessment toolset has several prerequisites that need to be installed or configured. The tool runs in PowerShell, and connects to various Microsoft 365 services.
+The Office 365 Security Optimisation Assessment has several prerequisites that need to be installed or configured. The tool runs in PowerShell, and connects to various workloads in Office 365.
 
-## Prerequisite Breakdown
+## Prerequisites Breakdown
 
-Prerequisite installation is simplified by the use of a PowerShell prerequisite script
-
-The following prerequsites are installed or updated by the prerequisite installation script:
-* Azure AD MSOnline (v1) PowerShell module
-* Azure AD (v2) Preview PowerShell module
-* Exchange Online (v3) PowerShell module
-* SharePoint Online PowerShell module
-* Microsoft Teams PowerShell module
-* Power Apps admin PowerShell module
+The latest version of the following modules are installed:
+* Azure AD MSOnline (v1)
+* Azure AD (v2) Preview
+* Exchange Online Management (v3)
+* SharePoint Online
+* Microsoft Teams
+* Power Apps admin
 * From the Microsoft Graph PowerShell SDK: 
-   * Microsoft.Graph.Authentication module
-   * Microsoft.Graph.Security module
-* Active Directory PowerShell module
+   * Microsoft.Graph.Authentication
+   * Microsoft.Graph.Security
+* Active Directory
 
-The following prerequisites are removed
-* SharePoint Online PowerShell module - if manually installed, this is removed from your PS Module Path to prevent conflicts
-* Azure AD (Non-preview) module - conflicts with the required Azure AD Preview module
+Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from your PS Module Path to prevent conflicts.
 
-An Azure AD application is also installed in your tenant. For more information on this see below.
+An Azure AD application is also registered in your tenant. Details of this are provided below.
 
-## Prerequisite Script
+## Prerequisites Script
 
 ### Requirements
 
-In order to install the module and run the prerequisite script, you must have:
-* Local Admin access to the workstation that you will perform the collection from
-* PowerShell Gallery access configured (Automatically configured on PowerShell 5, which is standard on Windows 10)
+In order to install the SOA module and run the prerequisites script, you must have the following on the collection machine:
+* PowerShell 5.1 (PowerShell 7 is not supported)
+* PowerShell Gallery (Automatically configured in PowerShell 5, which is standard on Windows 10 and later)
 * PowerShellGet version 2.2.4 or higher
-   * As of April 2020, PowerShell Gallery supports only TLS 1.2.  While PowerShell and Windows support TLS 1.2, in some proxy environments the proxy server might negotiate a lower version, which will cause a Resource Unavailable error when attempting to install any module from PowerShell Gallery.  PowerShellGet 2.2.4 works around this issue by temporarily forcing TLS 1.2 when installing any module from PowerShell Gallery and then changing back to the OS default.  If at least PowerShellGet 2.2.4 is not installed, run the following to install the latest version:
+   * PowerShell Gallery requires TLS 1.2.  While PowerShell and Windows support TLS 1.2, in some proxy environments the proxy server might negotiate a lower version, which will cause a Resource Unavailable error when attempting to install any module from PowerShell Gallery.  PowerShellGet 2.2.4 works around this issue by temporarily forcing TLS 1.2 when installing any module from PowerShell Gallery and then changing back to the OS default.  If at least PowerShellGet 2.2.4 is not installed, run the following to install the latest version:<br><br>
    
       `Install-Module PowerShellGet`
+<br>
+* WinRM Basic authentication is not disabled
+   * This is required for the connection to Security & Compliance Center in the Exchange Online module. Basic authentication is not used, but the access token is sent in the Basic authentication header for any connection that uses WinRM, including Security & Compliance Center.
 
-### Running the prerequisite script
+### Permissions
+* Local admin rights are not required on the collection machine except if the Active Directory module is not installed or WinRM Basic is disabled.
+   * To enable WinRM Basic, run PowerShell as administrator and run `Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name AllowBasic -Value 1`. Or you can start Regedit and navigate to HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WinRM\Client and change the data for the "AllowBasic" value from 0 to 1.
+* For the connection tests, the account used does not require any admin role except for the connection to Azure AD using the v2 Preview module: To be able to determine the URL to use to connect to SharePoint Online, the account use to connect to Azure AD needs to have the Directory Readers role; to be able to create and test the Azure AD application, the needed roles are detailed next.
+* Azure AD application:
+   * For the application to be created, any user in the tenant can be used, by default. If this setting has been disabled, the account used to connect to Azure AD with the v2 Preview module must have the Global Administrator, Application Administrator, Cloud Application Administraor, or Application Developer role.
+   * To be able to grant consent to the application, a user with Global Administrator or Privileged Role Administrator role is required. (The account used to create the application can be different than the account used to grant consent.)
+   * To test the application, the account used to connect to Azure AD with the v2 Preview module must have the Application Administrator, or Cloud Application Administraor role or be assigned the owner role in the "Office 365 Security Optimization Assessment" application.
 
-1. Load a PowerShell prompt as administrator (this is important, in order to update/install modules)
-2. Run the following (which will install the latest module from Powershell Gallery):
+### Collection machine
+The collection machine can be any workstation or server, physical or virtual, that can connect via PowerShell to Azure AD, Microsoft Graph, Exchange Online, Security & Compliance Center, SharePoint Online, Microsoft Teams, and Power Platform. It does not need to be AD- or AAD-joined unless you have Conditional Access policies requiring it for these connections.
+
+If directory synchronisation is used, a script will need to be executed on a domain-joined machine that has the Active Directory PowerShell module installed.
+
+### Running the prerequisites script
+
+1. Open a new PowerShell window (not the ISE).
+2. Run the following to install the latest version of the SOA module from Powershell Gallery:
 
    `Install-Module SOA`
 
-3. Run the following to install the prerequisites (see below for optional parameters that may be applicable):
+3. Run the following to install the prerequisites (important: see below for optional parameters that may be applicable):
 
    `Install-SOAPrerequisites`
 
-### Collection machine
-
-The script must be run from the machine that you will use to perform the collection as part of the engagement. Please consider the following:
-* The machine should not be a production server, as the pre-requisite script may cause a reboot during installation of modules.
-* You are require to be logged on as a local administrator.
-
+## Optional parameters
 ### Custom (vanity) SharePoint Online domain
 
-If you use a custom domain to connect to the SharePoint Online admin endpoint (such as a multi-tenant enhanced organization), you need to specify the domain using the SPOAdminDomain parameter, or the connection test to SPO will fail.
+If you use a custom domain to connect to the SharePoint Online admin endpoint (such as a multi-tenant enhanced organization), you need to specify the domain using `-SPOAdminDomain <FQDN>` or the connection test to SPO will fail.
 
 ### Requiring a proxy
 
-We recommend that traffic routing to Microsoft 365 bypasses proxy infrastructure, and this script needs connectivity to the PowerShell Gallery, as well.
+If traffic to Microsoft 365 routes via proxy infrastructure and the prerequisites installation fails because of this, try again with `-UseProxy`.
 
-If a proxy is required, try running with `-UseProxy`.
+### Sovereign clouds
 
-### Sovereign Clouds
-
-When preparing for an assessment of a Microsoft 365 tenant in a sovereign cloud environment, the `-O365EnvironmentName` parameter should be used. The default value is `Commercial` which does not need to be specified, and can be used for standard Commercial and Government Community Cloud (GCC) tenants.
+If the Office 365 tenant is in a sovereign cloud environment, the `-O365EnvironmentName` parameter must be used. (The default value is `Commercial`, so the parameter is only required if it is in any of the environments below).
 
 * Use `USGovGCC` for Microsoft Cloud for US Government (GCC\GCC-Moderate)
 * Use `USGovGCCHigh` for Microsoft Cloud for US Government L4 (GCC-High)
@@ -75,32 +81,32 @@ When preparing for an assessment of a Microsoft 365 tenant in a sovereign cloud 
 * Use `Germany` for Microsoft Cloud Germany
 * Use `China` for Azure and Microsoft 365 operated by 21Vianet in China
 
+### Active Directory module
+
+If directory synchronisation is used and the Active Directory module is not installed and you cannot run PowerShell as a local admin, you can skip the installation of the module by using `-SkipAdModule`. A machine with the module installed will be needed on the first day of the engagement to collect information about the AD environment. The module can be installed on a machine using `-AdModuleOnly` or manually via some other method.
+
 ## Azure AD application
 
-An Azure AD Application is required in order to perform API calls to Microsoft Graph. Installation of this application is performed by the prerequisite script.
+An Azure AD application is required in order to use Microsoft Graph. Installation and configuration of this application is performed by the prerequisites script.
 
-The scope of this application is limited to the following:
-* **SecurityEvents.Read.All** (This scope is used to get active security events within your tenant.)
-* **IdentityRiskyUser.Read.All** (This scope is used to get identity risk events raised by Azure Identity Protection.)
-* **IdentityRiskEvent.Read.All** (This scope is used to get identity risk events raised by Azure Identity Protection.)
-* **DeviceManagementConfiguration.Read** (This scope is used to get Intune configuration policies, if applicable.)
-* **AuditLog.Read.All** (This scope is used to get sign-in activity for user and guest accounts.)
-* **Directory.Read.All** (This scope is used to get sign-in activity for user and guest accounts. Both this scope and the previous scope are required in order to get sign-in activity.)
-* **Policy.Read.All** (This scope is used to get Azure AD authorization and conditional access policies.)
-* **SecurityIncident.Read.All** (This scope is used to get Defender security incidents.)
+The permission scope of this application is limited to the following:
+* **SecurityEvents.Read.All** (Retrieve active security events within your tenant.)
+* **IdentityRiskyUser.Read.All** (Retrieve identity risk events raised by Azure Identity Protection.)
+* **IdentityRiskEvent.Read.All** (Retrieve identity risk events raised by Azure Identity Protection.)
+* **DeviceManagementConfiguration.Read** (Retrieve Intune configuration policies, if applicable.)
+* **AuditLog.Read.All** (Retrieve sign-in activity for user and guest accounts.)
+* **Directory.Read.All** (Retrieve sign-in activity for user and guest accounts. Both this scope and the previous scope are required in order to get sign-in activity.)
+* **Policy.Read.All** (Retrieve Azure AD authorization and conditional access policies.)
+* **SecurityIncident.Read.All** (Retrieve Defender security incidents.)
 
 ### Azure AD application security
 
 Being a security-related assessment, we are conscious of the security of the Azure AD application created for it, which is why the following security considerations are made:
-* Azure AD applications are scoped only to certain activities, and the scopes for this application are documented above. Scopes are used only when they are required, and the assessment follows a least-privilege model. All scopes are read-only and specific to configuration settings, not access to any user content.
-* The Azure AD application client secret (essentially, a password) is created by the installation module (and randomly generated by Azure AD) for validating the installation and is configured to expire after 48 hours, but is removed when the validation is complete.
-* A client secret, configured to expire after 48 hours, is created on the day of the collection to get the necessary data, but is removed when the collection is complete.
-* The Azure AD application client secret is stored only in memory during the execution of the prerequisites installation script and the data collection script. (It is never stored in a file and is removed from the application when complete.)
+* The application is scoped to specific activities, as indicated above. All scopes are read-only and specific to configuration settings, not access to any user content.
+* A client secret (a password specific to the application that is randomly generated by Azure AD ) is created by the installation script for validating the installation of the application. It is configured to expire after 48 hours, but is deleted from the application when the validation is complete.
+* A client secret, also configured to expire after 48 hours, is created on the day of the collection to be able to retrieve the necessary data, but is deleted from the application when the collection is complete.
+* The client secret is stored only in memory during the execution of the prerequisites installation script and the data collection script.
 
 ### Removal of Azure AD application
 
-You can remove the Azure AD application at the conclusion of the engagement. This is not necessary because the application cannot be used without a valid client secret, and it is removed when the collection script completes. It is important, however, that you **do not** remove the Azure AD application between the prerequisites installation and the data collection on the first day of the engagement.
-
-## Log Analytics upload
-
-When running a Security Optimization Assessment, customers can opt to have their remediation planning results uploaded to Log Analytics (to keep historic data). The Export-SOARPS command in this module is used with this **optional** service.
+You can remove the Azure AD application at the conclusion of the engagement. This is not necessary because the application cannot be used without a valid client secret, which is deleted when the collection script completes. It is important, however, that you **do not** remove the Azure AD application between the prerequisites installation and the data collection on the first day of the engagement.

@@ -39,7 +39,7 @@ Function Get-IsAdministrator {
 
 Function Exit-Script {
     Stop-Transcript
-    exit
+    
 }
 
 Function Get-PowerShellCount
@@ -59,9 +59,9 @@ Function Write-Important {
     
     #>
     Write-Host ""
-    Write-Host "##########################################" -ForegroundColor Yellow
-    Write-Host "#                 IMPORTANT              #" -ForegroundColor Yellow
-    Write-Host "##########################################" -ForegroundColor Yellow
+    Write-Host "#############################################" -ForegroundColor Yellow
+    Write-Host "#                 IMPORTANT                 #" -ForegroundColor Yellow
+    Write-Host "#############################################" -ForegroundColor Yellow
     Write-Host ""
 }
 
@@ -673,14 +673,14 @@ Function Get-ModuleStatus {
         Write-Verbose "$(Get-Date) Get-ModuleStatus $ModuleName Version $($M.Version.ToString()) Path $($M.Path)"
     }
 
+    $modulePaths = @()
+    foreach ($m in ($InstalledModule | Sort-Object Version -Desc)) {
+        $modulePaths += $m.Path.Substring(0,$m.Path.LastIndexOf('\'))
+    }
+
     If($InstalledModule.Count -gt 1) {
         # More than one module, flag this
         $MultipleFound = $True
-        $modulePaths = @()
-        foreach ($m in $InstalledModule) {
-            $modulePaths += $m.Path.Substring(0,$m.Path.LastIndexOf('\'))
-        }
-        $modulePaths = $modulePaths | Sort-Object
         $Installed = $True
 
         # Use the latest for comparisons
@@ -827,7 +827,12 @@ Function Install-ModuleFromGallery {
 
     # Install the module from PSGallery specifying Force
     # AllowClobber allows Teams module to be installed when SfBO module is installed/loaded
-    Install-Module $Module -Force -Scope:AllUsers -AllowClobber
+    if (Get-IsAdministrator) {
+        Install-Module $Module -Force -Scope:AllUsers -AllowClobber
+    }
+    else {
+        Install-Module $Module -Force -Scope:CurrentUser -AllowClobber
+    }
 
     If($Update) {
         # Remove old versions of the module
@@ -842,38 +847,44 @@ Function Install-ADDSModule {
     
     #>
 
-    $ComputerInfo = Get-ComputerInfo
+    if (Get-IsAdministrator) {
+        $ComputerInfo = Get-ComputerInfo
 
-    If($ComputerInfo) {
-        Write-Verbose "Computer type: $($ComputerInfo.WindowsInstallationType)"
-        Write-Verbose "OS Build: $($ComputerInfo.OsBuildNumber)"
-        If ($ComputerInfo.WindowsInstallationType -eq "Server") {
-            Write-Verbose "Server OS detected, using 'Add-WindowsFeature'"
-            Try {
-                Add-WindowsFeature -Name RSAT-AD-PowerShell -IncludeAllSubFeature | Out-Null
-            } Catch {
-                Write-Error "$(Get-Date) Could not install ActiveDirectory module due to error"
+        If($ComputerInfo) {
+            Write-Verbose "Computer type: $($ComputerInfo.WindowsInstallationType)"
+            Write-Verbose "OS Build: $($ComputerInfo.OsBuildNumber)"
+            If ($ComputerInfo.WindowsInstallationType -eq "Server") {
+                Write-Verbose "Server OS detected, using 'Add-WindowsFeature'"
+                Try {
+                    Add-WindowsFeature -Name RSAT-AD-PowerShell -IncludeAllSubFeature | Out-Null
+                } Catch {
+                    Write-Error "$(Get-Date) Could not install ActiveDirectory module"
+                }
+            }
+            ElseIf ($ComputerInfo.WindowsInstallationType -eq "Client" -And $ComputerInfo.OsBuildNumber -ge 17763) {
+                Write-Verbose "Windows 10 version 1809 or later detected, using 'Add-WindowsCapability'"
+                Try {
+                    Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" | Out-Null
+                } Catch {
+                    Write-Error "$(Get-Date) Could not install ActiveDirectory module. Is -UseProxy needed? If configured for WSUS, you will need to deploy the module from there."
+                }
+            }
+            ElseIf ($ComputerInfo.WindowsInstallationType -eq "Client") {
+                Write-Verbose "Windows 10 version 1803 or earlier detected, using 'Enable-WindowsOptionalFeature'"
+                Try {
+                    Enable-WindowsOptionalFeature -Online -FeatureName RSATClient-Roles-AD-Powershell | Out-Null
+                } Catch {
+                    Write-Error "$(Get-Date) Could not install ActiveDirectory module. Is -UseProxy needed? If configured for WSUS, you will need to deploy the module from there or install from https://www.microsoft.com/en-us/download/details.aspx?id=45520."
+                }
+            }
+            Else {
+                Write-Error "Error detecting the OS type while installing Active Directory module."
             }
         }
-        ElseIf ($ComputerInfo.WindowsInstallationType -eq "Client" -And $ComputerInfo.OsBuildNumber -ge 17763) {
-            Write-Verbose "Windows 10 version 1809 or later detected, using 'Add-WindowsCapability'"
-            Try {
-                Add-WindowsCapability -Online -Name "Rsat.ActiveDirectory.DS-LDS.Tools~~~~0.0.1.0" | Out-Null
-            } Catch {
-                Write-Error "$(Get-Date) Could not install ActiveDirectory module due to error. Check Proxy server and WSUS settings."
-            }
-        }
-        ElseIf ($ComputerInfo.WindowsInstallationType -eq "Client") {
-            Write-Verbose "Windows 10 version 1803 or earlier detected, using 'Enable-WindowsOptionalFeature'"
-            Try {
-                Enable-WindowsOptionalFeature -Online -FeatureName RSATClient-Roles-AD-Powershell | Out-Null
-            } Catch {
-                Write-Error "$(Get-Date) Could not install ActiveDirectory module due to error. Check Proxy server and WSUS settings, or manually download and install from https://www.microsoft.com/en-us/download/details.aspx?id=45520"
-            }
-        }
-        Else {
-            Write-Error "Error detecting the OS type while installing ActiveDirectory module."
-        }
+    }
+    else {
+        Exit-Script
+        throw "$(Get-Date) You must be running PowerShell as an administrator in order to install the Active Directory module."
     }
 }
 
@@ -885,71 +896,81 @@ Function Invoke-ModuleFix {
     #>
     Param($Modules)
 
-    If(Get-IsAdministrator -eq $True) {
-
-        # Administrator so can remediate
-        $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
+    $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
+    # Administrator needed to remove modules in other profiles
+    if ($RemoveMultipleModuleVersions) {
+        if (Get-IsAdministrator) {
         $DupeModules = $Modules | Where-Object {$_.Multiple -eq $True}
-        $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -ne $_.GalleryVersion }
-        $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
-        $MissingNonGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -eq $_.GalleryVersion}
-
-        # Determine status of PSGallery repository
-        $PSGallery = Get-PSRepository -Name "PSGallery"
-        If($PSGallery) {
-            If($PSGallery.InstallationPolicy -eq "Untrusted") {
-                # Untrusted PSGallery, set to trust
-                Write-Host "$(Get-Date) Trusting PSGallery for remediation activities"
-                Try {
-                    Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
-                } Catch {
-                    Write-Error "$(Get-Date) Could not trust PSGallery due to error"
-                    Exit-Script
-                }
-            }
-        } Else {
-            Write-Error "PSGallery is not present on this host, so modules cannot be remediated."
+        }
+        else {
             Exit-Script
-        }
+            throw "Start PowerShell as an administrator to be able to uninstall multiple versions of modules."
+            return $False
+        } 
+    }
+    $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -ne $_.GalleryVersion }
+    $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
+    $MissingNonGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -eq $_.GalleryVersion}
 
-        # Conflict modules, need to be removed
-        ForEach($ConflictModule in $ConflictModules) {
-            Write-Host "$(Get-Date) Removing conflicting module $($ConflictModule.Module)"
-            Uninstall-Module -Name $($ConflictModule.Module) -Force
-        }
-
-        # Out of date modules
-        ForEach($OutdatedModule in $OutdatedModules) {
-            Write-Host "$(Get-Date) Updating $($OutdatedModule.Module) from $($OutdatedModule.InstalledVersion) to $($OutdatedModule.GalleryVersion)"
-            Install-ModuleFromGallery -Module $($OutdatedModule.Module) -Update
-        }
-
-        # Missing gallery modules
-        ForEach($MissingGalleryModule in $MissingGalleryModules) {
-            Write-Host "$(Get-Date) Installing $($MissingGalleryModule.Module)"
-            Install-ModuleFromGallery -Module $($MissingGalleryModule.Module)          
-        }
-
-        # Dupe modules
-        ForEach($DupeModule in $DupeModules) {
-            Write-Host "$(Get-Date) Removing duplicate modules for $($DupeModule.Module)"
-            Uninstall-OldModules -Module $($DupeModule.Module)
-        }
-
-        # Missing modules which are not available from gallery
-        ForEach($MissingNonGalleryModule in $MissingNonGalleryModules) {
-            Write-Host "$(Get-Date) Installing $($MissingNonGalleryModule.Module)"
-
-            Switch ($MissingNonGalleryModule.Module) {
-                "ActiveDirectory" {
-                    Write-Verbose "$(Get-Date) Installing on-premises Active Directory module"
-                    Install-ADDSModule
-                }
+    # Determine status of PSGallery repository
+    $PSGallery = Get-PSRepository -Name "PSGallery"
+    If($PSGallery) {
+        If($PSGallery.InstallationPolicy -eq "Untrusted") {
+            # Untrusted PSGallery, set to trust
+            Write-Host "$(Get-Date) Trusting PSGallery for remediation activities"
+            Try {
+                Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction Stop
+            } Catch {
+                Exit-Script
+                throw "$(Get-Date) Unable to set PSGallery as trusted"
+                
             }
         }
     } Else {
-        Write-Error "Load PowerShell as administrator in order to fix modules"
-        Return $False
+        Exit-Script
+        throw "PSGallery is not present on this host, so modules cannot be installed."
+        
+    }
+
+    # Conflict modules, need to be removed
+    ForEach($ConflictModule in $ConflictModules) {
+        Write-Host "$(Get-Date) Removing conflicting module $($ConflictModule.Module)"
+        Uninstall-Module -Name $($ConflictModule.Module) -Force
+    }
+
+    # Out of date modules
+    ForEach($OutdatedModule in $OutdatedModules) {
+        Write-Host "$(Get-Date) Installing version $($OutdatedModule.GalleryVersion) of $($OutdatedModule.Module) (highest installed version is $($OutdatedModule.InstalledVersion))"
+        if ($RemoveMultipleModuleVersions) {
+            Install-ModuleFromGallery -Module $($OutdatedModule.Module) -Update
+        }
+        else {
+            Install-ModuleFromGallery -Module $($OutdatedModule.Module)
+        }
+    }
+
+    # Missing gallery modules
+    ForEach($MissingGalleryModule in $MissingGalleryModules) {
+        Write-Host "$(Get-Date) Installing $($MissingGalleryModule.Module)"
+        Install-ModuleFromGallery -Module $($MissingGalleryModule.Module)          
+    }
+
+    # Dupe modules
+    ForEach($DupeModule in $DupeModules) {
+        Write-Host "$(Get-Date) Removing older versions of modules for $($DupeModule.Module)"
+        Uninstall-OldModules -Module $($DupeModule.Module)
+    }
+
+    # Missing modules which are not available from gallery
+    ForEach($MissingNonGalleryModule in $MissingNonGalleryModules) {
+        Write-Host "$(Get-Date) Installing $($MissingNonGalleryModule.Module)"
+
+        Switch ($MissingNonGalleryModule.Module) {
+            "ActiveDirectory" {
+                Write-Verbose "$(Get-Date) Installing on-premises Active Directory module"
+                Install-ADDSModule
+            }
+        }
     }
 }
 
@@ -998,15 +1019,15 @@ Function Invoke-SOAModuleCheck {
     $RequiredModules = @()
     
     # Conflict modules are modules which their presence causes issues
-    $ConflictModules = @("AzureAD")
+    $ConflictModules = @()
 
     # Bypass checks
     If($Bypass -notcontains "AAD") { $RequiredModules += "AzureADPreview" }
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
-    If($Bypass -notcontains "SharePoint") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
+    If($Bypass -notcontains "SPO") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
-    If (($Bypass -notcontains "Exchange" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
-    If ($Bypass -notcontains "PowerApps") {
+    If (($Bypass -notcontains "EXO" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
+    If ($Bypass -notcontains "PP") {
         if ($O365EnvironmentName -eq "Germany") {
             Write-Host "$(Get-Date) Skipping Power Apps module because Power Platform isn't supported in Germany cloud..."
         }
@@ -1036,6 +1057,38 @@ Function Invoke-SOAModuleCheck {
     Return $ModuleCheckResult
 }
 
+function Import-PSModule {
+    param (
+        $ModuleName,
+        [switch]$Implicit
+        )
+
+    if ($Implicit -eq $false) {
+        $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
+        # Multiple loaded versions are listed in reverse order of precedence
+        $loadedModule = Get-Module -Name $ModuleName | Select-Object -Last 1
+        if ($loadedModule -and $loadedModule.Version.ToString() -ne $highestVersion) {
+            # Unload module if the highest version isn't loaded or not highest precedence
+            Write-Verbose -Message "Version $($loadedModule.Version.ToString()) of $ModuleName is loaded, but the highest installed version is $highestVersion. The module will be unloaded and the highest version loaded."
+            Remove-Module -Name $ModuleName
+        }
+        if ($ModuleName -eq 'Microsoft.PowerApps.Administration.PowerShell') {
+            # Explicitly load its auth module using SilentlyContinue to suppress warnings due to Recover-* being an unapproved verb in the Auth module
+            $PAPath = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).ModuleBase
+            Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force
+        }
+        elseif ($ModuleName -eq 'AzureADPreview') {
+            if (Get-Module -Name AzureAD) {
+                # Unload AAD module to ensure only cmdlets from the AAD Preview module are used
+                Remove-Module AzureAD
+            }
+        }
+        Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue
+        if ($loadError) {
+            Write-Error -Message "Error loading module $ModuleName."
+        }
+    }
+}
 Function Test-Connections {
     Param(
         $RPSProxySetting,
@@ -1045,6 +1098,7 @@ Function Test-Connections {
     $Connections = @()
 
     Write-Host "$(Get-Date) Testing connections..."
+    #$userUPN = Read-Host -Prompt "What is the UPN of the admin account that you will be signing in with for connection validation and with sufficient privileges to register the Azure AD application"
 
     <#
         
@@ -1053,7 +1107,7 @@ Function Test-Connections {
     #>
     If($Bypass -notcontains "MSOL") {
 
-        
+        Import-PSModule -ModuleName MSOnline -Implicit $UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1070,7 +1124,10 @@ Function Test-Connections {
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
             $Connect = $True 
-            Get-MsolDomain -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
+            # Cmdlet that can be run by any user
+            Get-MsolUser -MaxResults 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
+            # Cmdlet that requires admin role
+            #Get-MsolDomain -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
             If($CommandError) { $Command = $False } Else { $Command = $True }
         }
 
@@ -1089,23 +1146,27 @@ Function Test-Connections {
     
     #>
     If($Bypass -notcontains "AAD") {
+        Import-PSModule -ModuleName AzureADPreview -Implicit $UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2..."
         switch ($O365EnvironmentName) {
-            "Commercial"   {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovGCC"     {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovGCCHigh" {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-            "USGovDoD"     {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-            "Germany"      {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
-            "China"        {$AADConnection = Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureChinaCloud | Out-Null}
+            "Commercial"   {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+            "USGovGCC"     {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+            "USGovGCCHigh" {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
+            "USGovDoD"     {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
+            "Germany"      {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
+            "China"        {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureChinaCloud | Out-Null}
         }
 
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
             $Connect = $True 
-            Get-AzureADDomain -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
+            # Cmdlet that can be run by any user
+            Get-AzureADUser -Top 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
+            # Cmdlet that requires admin role
+            # Get-AzureADDomain -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
             If($CommandError) { $Command = $False } Else { $Command = $True }
         }
 
@@ -1123,25 +1184,37 @@ Function Test-Connections {
         SCC
     
     #>
+    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
+        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit $UseImplicitLoading
+    }
+
     If($Bypass -notcontains "SCC") {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to SCC..."
-        Get-PSSession | Where-Object {$_.ComputerName -like "*protection.o*"} | Remove-PSSession
-        switch ($O365EnvironmentName) {
-            "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
-            "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
-            "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common | Out-Null;break}
-            "China"        {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common | Out-Null}
+        # Skip connection test if WinRM Basic is disabled
+        if ((Invoke-WinRMBasicCheck).Pass) {
+            Write-Host "$(Get-Date) Connecting to SCC..."
+            Get-PSSession | Where-Object {$_.ComputerName -like "*protection.o*"} | Remove-PSSession
+            switch ($O365EnvironmentName) {
+                "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+                "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+                "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
+                "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
+                "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common | Out-Null;break}
+                "China"        {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common | Out-Null}
+            }
         }
-
+        else {
+            Write-Host "$(Get-Date) Skipping connection test for SCC because WinRM Basic is disabled. This must be remediated prior to the engagement." -ForegroundColor Red
+        }
         If((Get-PSSession | Where-Object {$_.ComputerName -like "*protection.o*" -or $_.ComputerName -like "*protection.partner.o*"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
 
-        # Run test command
-        If(Get-Command "Get-ProtectionAlert") {
+        # Has test command been imported. Not actually running it
+        # Cmdlet available to any user
+        if (Get-Command Get-Recipient) {
+        # Cmdlet available to admins
+        #If(Get-Command "Get-ProtectionAlert") {
             $Command = $True
         } Else {
             $Command = $False
@@ -1161,7 +1234,7 @@ Function Test-Connections {
         Exchange
     
     #>
-    If($Bypass -notcontains "Exchange") {
+    If($Bypass -notcontains "EXO") {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1177,8 +1250,11 @@ Function Test-Connections {
        
         If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") { $Connect = $True } Else { $Connect = $False }
 
-        # Run test command
-        If(Get-Command "Get-OrganizationConfig") {
+        # Has test command been imported. Not actually running it
+        # Cmdlet available to any user
+        if (Get-Command Get-Mailbox) {
+        # Cmdlet available to admin
+        #If(Get-Command "Get-OrganizationConfig") {
             If((Get-OrganizationConfig).Name) {
                 $Command = $True
             } Else {
@@ -1201,7 +1277,8 @@ Function Test-Connections {
         SharePoint
     
     #>
-    If($Bypass -notcontains "SharePoint") {
+    If($Bypass -notcontains "SPO") {
+        Import-PSModule -ModuleName Microsoft.Online.SharePoint.PowerShell -Implicit $UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1219,7 +1296,10 @@ Function Test-Connections {
         # If no error, try test command
         If($ConnectError) { $Connect = $False; $Command = $False} Else { 
             $Connect = $True 
-            Get-SPOTenant -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
+            # Cmdlet that can be run by anyone
+            Get-SPOSite -Limit 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError -WarningAction SilentlyContinue | Out-Null
+            # Cmdlet that can be run by admin
+            #Get-SPOTenant -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
             If($CommandError) { $Command = $False } Else { $Command = $True }
         }
 
@@ -1238,19 +1318,20 @@ Function Test-Connections {
     
     #>
     If($Bypass -notcontains "Teams") {
+        Import-PSModule -ModuleName MicrosoftTeams -Implicit $UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
         $InitialDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
         switch ($O365EnvironmentName) {
-            "Commercial"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovGCC"   {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovGCCHigh" {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovDoD"     {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "Commercial"    {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovGCC"      {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovGCCHigh"  {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "USGovDoD"      {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
             #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
-            "China"        {Write-Host "Teams is not available in 21Vianet offering";break}
-            default        {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue}
+            "China"         {Write-Host "Teams is not available in 21Vianet offering";break}
+            default         {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue}
         }
         #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
@@ -1261,7 +1342,10 @@ Function Test-Connections {
         }
         else { 
             $Connect = $true
-            if (Get-CsTenantFederationConfiguration) {
+            # Cmdlet that can be run by anyone
+            if (Get-CsOnlineUser -ResultSize 1) {
+            # Cmdlet that can be run by admin
+            #if (Get-CsTenantFederationConfiguration) {
                 $Command = $True
             } 
             else {
@@ -1283,11 +1367,12 @@ Function Test-Connections {
         Power Apps
     
     #>
-    If($Bypass -notcontains 'PowerApps') {
+    If($Bypass -notcontains 'PP') {
         if ($O365EnvironmentName -eq 'Germany') {
             Write-Host "$(Get-Date) Skipping connection to Power Apps because it is not supported in Germany cloud..."
         }
         else {
+            Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit $UseImplicitLoading
             # Reset vars
             $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1436,7 +1521,8 @@ Function Invoke-ManualModuleCheck
                 Write-Host "$(Get-Date) The module check has failed because some modules have been manually installed. These will conflict with newer required modules from the PowerShell Gallery." -ForegroundColor Red
 
                 if ($DoNotRemediate -eq $false) {
-                    Throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. You must remove them using Add/Remove Programs."
+                    Exit-Script
+                    throw "$(Get-Date) An attempt to remove these from the PowerShell path was unsuccessful. You must remove them using Add/Remove Programs."
                 }
             }
         }
@@ -1535,11 +1621,12 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        $Bypass=@(),
+        [ValidateSet("AAD","MSOL","EXO","SCC","SPO","PP","Teams","Graph")][string[]]$Bypass,
         [Switch]$UseProxy,
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
-        [Parameter(DontShow)][switch]$AllowMultipleModuleVersions,
+        [switch]$RemoveMultipleModuleVersions,
+        [switch]$UseImplicitLoading,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
         [ValidateScript({if (Resolve-DnsName -Name $PSItem) {$true} else {throw "SPO admin domain does not resolve.  Verify you entered a valid fully qualified domain name."}})]
@@ -1609,7 +1696,7 @@ Function Install-SOAPrerequisites
     # Change based on ConnectOnly flag
     If($ConnectOnly) {
         $ConnectCheck = $True
-        $AzureADAppCheck = $True
+        $AzureADAppCheck = $False
         $ModuleCheck = $False
     }
 
@@ -1635,40 +1722,48 @@ Function Install-SOAPrerequisites
     Start-Transcript "$SOADirectory\$TranscriptName"
 
     if ($DoNotRemediate){
-        Write-Host "$(Get-Date) The DoNotRemediate switch was used.  Any missing, outdated, or duplicate modules, as well as the registration and/or configuration of the Azure AD application will not be performed." -ForegroundColor Yellow
+        Write-Host "$(Get-Date) The DoNotRemediate switch was used.  Any missing or outdated modules, as well as the registration and/or configuration of the Azure AD application will not be performed." -ForegroundColor Yellow
     }
 
     if ($NoVersionCheck) {
-        Write-Host "$(Get-Date) NoVersionCheck switch was used. Skipping version check..."
+        Write-Host "$(Get-Date) NoVersionCheck switch was used. Skipping version check of the SOA module."
     }
     else {    
         # Check for newer version
-        Write-Host "$(Get-Date) Performing version check..."
+        Write-Host "$(Get-Date) Performing version check of the SOA module..."
         $VersionCheck = Invoke-SOAVersionCheck
         If($VersionCheck.NewerAvailable -eq $true)
         {
-            Throw "Version $($VersionCheck.Gallery) of the SOA module has been released. Your version $($VersionCheck.Module) is out of date. Run Update-Module SOA."
+            Exit-Script
+            throw "Version $($VersionCheck.Gallery) of the SOA module has been released. Your version $($VersionCheck.Module) is out of date. Run Update-Module SOA."
+            
         }
     }
 
-    # Check administrator and multiple PowerShell windows
-    If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True -and $DoNotRemediate -eq $false) {
-        Throw "PowerShell must be run as Administrator in order to allow for any changes when running Install-SOAPrerequisites"
-    }
-    If($AllowMultipleWindows) {
-        Write-Important
-        Write-Host "Allow multiple windows has been specified. This should not be used in general operation. Module remediation may fail!"
-    } 
-    Else 
-    {
-        If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True -and $DoNotRemediate -eq $false) {
-            Throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being loaded, blocking uninstallation and updates. Close all open PowerShell windows and start with a clean PowerShell window running as Administrator."
+    # Require local admin and single PowerShell window if multiple modules will be removed
+    if ($RemoveMultipleModuleVersions) {
+        If($(Get-IsAdministrator) -eq $False -and $ModuleCheck -eq $True -and $DoNotRemediate -eq $false) {
+            Exit-Script
+            throw "PowerShell must be run as an administrator to be able to uninstall multiple versions of modules."
+            
+        }
+        If($AllowMultipleWindows) {
+            Write-Important
+            Write-Host "Allow multiple windows has been specified. This should not be used in general operation. Module remediation may fail!"
+        } 
+        Else 
+        {
+            If($(Get-PowerShellCount) -gt 1 -and $ModuleCheck -eq $True -and $DoNotRemediate -eq $false) {
+                Exit-Script
+                throw "There are multiple PowerShell windows open. This can cause issues with PowerShell modules being uninstalled. Close all open PowerShell windows and try again."
+                
+            }
         }
     }
 
     # Check that only the AD module is installed on a standalone machine, and then exit the script
     If($ADModuleOnly) {
-        Write-Host "$(Get-Date) ADModuleOnly switch was used. All other script functions are disabled. Only the on-premises AD module will be installed and then script will exit."
+        Write-Host "$(Get-Date) ADModuleOnly switch was used. The on-premises AD module will be installed and then the script will exit."
 
         $ModuleCheckResult = @(Get-ModuleStatus -ModuleName "ActiveDirectory")
         $ModuleCheckResult | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
@@ -1682,7 +1777,7 @@ Function Install-SOAPrerequisites
                 Install-ADDSModule
             }
 
-            Write-Host "$(Get-Date) Post-remediation prerequisites check..."
+            Write-Host "$(Get-Date) Post-remediation module check..."
             $ModuleCheckResult = @(Get-ModuleStatus -ModuleName "ActiveDirectory")
             $ModuleCheckResult | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
         }
@@ -1699,39 +1794,40 @@ Function Install-SOAPrerequisites
         Display the banner 
 
     #>
-
-    Write-Host "#############################################################" -ForegroundColor Green
-    Write-Host "# Office 365 Security Optimization Assessment Prerequisites #" -ForegroundColor Green
-    Write-Host "#############################################################" -ForegroundColor Green
+    Write-Host ""
+    Write-Host "This scipt is used to install and validate the prerequisites for running the data collection"
+    Write-Host "for the Office 365 Security Optimisation Assessment, a Microsoft Services offering."
+    Write-Host "At the conclusion of this script running successfully, a file named SOA-PreCheck.json will be created."
+    Write-Host "This file should be sent to the engineer who will be delivering the assessment."
+    Write-Host ""
+    Write-Host "This script MUST be run on the workstation that will be used to perform the data collection for the assessment."
     Write-Host ""
 
-    Write-Host "The purpose of this cmdlet (script) is to install and check the prerequisites for running the data collection"
-    Write-Host "script for the Office 365 Security Optimization Assessment, a Microsoft Support proactive offering."
-    Write-Host "At the conclusion of this cmdlet running successfully, a file named SOA-PreCheck.json will be generated."
-    Write-Host "This file should be sent, prior to the first day of the engagement, to the engineer who will be delivering the assessment."
-    Write-Host ""
-    Write-Host "This cmdlet MUST be run on the workstation that will be used to perform the data collection on Day 1 of the assessment."
-    Write-Host ""
+    if ($DoNotRemediate -eq $false -and $ConnectOnly -eq $false) {
+        Write-Important
+        Write-Host "This script makes changes on this machine and in your Office 365 tenant. Per the parameters used, the following will occur:" -ForegroundColor Green
+        if ($ModuleCheck) {
+            Write-Host "- Install the latest version of PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
+        }
+        if ($AzureADAppCheck) {
+            Write-Host "- Register an Azure AD application in your tenant:" -ForegroundColor Green
+            Write-Host "   -- The application name is 'Office 365 Security Optimization Assessment'" -ForegroundColor Green
+            Write-Host "   -- The application will not be visible to end users" -ForegroundColor Green
+            Write-Host "   -- The application secret (password) will not be stored, is randomly generated, and is removed when the prerequisites installation is complete." -ForegroundColor Green
+            Write-Host "      (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
+        }
+        Write-Host ""
 
-    Write-Important
-
-    Write-Host "This cmdlet makes changes on this workstation and in your Office 365 tenant (unless DoNotRemediate was used). The following will occur:" -ForegroundColor Green
-    Write-Host "1. Update any existing PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
-    Write-Host "2. Install any PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
-    Write-Host "3. Install/register an Azure AD application in your tenant:" -ForegroundColor Green
-    Write-Host "    -- The application name is 'Office 365 Security Optimization Assessment" -ForegroundColor Green
-    Write-Host "    -- The application will not be visible to end users" -ForegroundColor Green
-    Write-Host "    -- The application secret (password) will not be stored, is randomly generated, and is removed when this cmdlet completes." -ForegroundColor Green
-    Write-Host "       (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
-    Write-Host ""
-
-    While($True) {
-        $rhInput = Read-Host "Is this cmdlet being run on the machine that will be used for collection, are you aware of the potential changes above, and do you want to proceed (y/n)"
-        if($rhInput -eq "n") {
-            Throw "Run Install-SOAPrerequisites on the machine that will be performing the data collection."
-        } elseif($rhInput -eq "y") {
-            Write-Host ""
-            break;
+        While($True) {
+            $rhInput = Read-Host "Is this script being run on the machine that will be used for the data collection, and do you agree with the changes above (y/n)"
+            if($rhInput -eq "n") {
+                Exit-Script
+                throw "Run Install-SOAPrerequisites on the machine that will be used to perform the data collection."
+                
+            } elseif($rhInput -eq "y") {
+                Write-Host ""
+                break;
+            }
         }
     }
 
@@ -1767,7 +1863,7 @@ Function Install-SOAPrerequisites
             Install-PackageProvider -Name NuGet -Force | Out-Null
         }
 
-        # Determine if PowerShell gallery is installed
+        # Determine if PowerShell Gallery is configured as the default repository
         If(!(Get-PSRepository -Name PSGallery -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
             Register-PSRepository -Default -InstallationPolicy Trusted | Out-Null
         }
@@ -1778,48 +1874,68 @@ Function Install-SOAPrerequisites
 
         $ModuleCheckResult = Invoke-SOAModuleCheck -O365EnvironmentName $O365EnvironmentName
 
-        $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
-        $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true -or $_.Conflict -eq $True})
+        if ($RemoveMultipleModuleVersions) {
+            $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
+            $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true -or $_.Conflict -eq $True})
+        }
+        else {
+            $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.NewerAvailable -ne $true})
+            $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.NewerAvailable -eq $true -or $_.Conflict -eq $True})
+        }
 
         If($Modules_Error.Count -gt 0) {
-            Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+            Write-Host "$(Get-Date) Modules that require remediation:" -ForegroundColor Yellow
+            if ($RemoveMultipleModuleVersions) {
+                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+            }
+            else {
+                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
+            }
 
             # Fix modules with errors unless instructed not to
             if ($DoNotRemediate -eq $false){
                 Invoke-ModuleFix $Modules_Error
 
-                Write-Host "$(Get-Date) Post-remediation prerequisites check..."
+                Write-Host "$(Get-Date) Post-remediation module check..."
                 $ModuleCheckResult = Invoke-SOAModuleCheck -O365EnvironmentName $O365EnvironmentName
-                $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
-                $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true})
-            }
-            # Don't continue to check connections, still modules with errors
-            If($Modules_Error.Count -gt 0) {
-                #Ignore error modules if it is only multiple versions and allow multiples switch has been used
-                if ($Modules_Error | Where-Object {$_.Installed -eq $true -and $_.NewerAvailable -eq $false -and $_.Multiple -eq $true -and $AllowMultipleModuleVersions -eq $true}) {
-                    Write-Warning "$(Get-Date) A module has an error, but it is only because there are multiple versions installed, and the AllowMultipleModuleVersions switch is True, so continuing."
+                if ($RemoveMultipleModuleVersions) {
+                    $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
+                    $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true})
                 }
                 else {
-                    Write-Important
-
-                    Write-Host "$(Get-Date) The module check has errors. The connection check will not proceed until the module check has no errors." -ForegroundColor Red
-                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-                    
-                    if ($Modules_Error | Where-Object {$_.Multiple -eq $true}){
-                        Write-Host "Paths to modules with multiple versions:"
-                        foreach ($m in ($Modules_Error | Where-Object {$_.Multiple -eq $true})) {
-                            Write-Host ""
-                            Write-Host "Module:" -NoNewline
-                            $m | Select-Object -ExpandProperty Module
-                            Write-Host "Path:"
-                            $m | Select-Object -ExpandProperty Path
-                            Write-Host ""
-                        }
-                    }
-                    
-                    Throw "$(Get-Date) The modules above must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
+                    $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.NewerAvailable -ne $true})
+                    $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.NewerAvailable -eq $true -or $_.Conflict -eq $True})
                 }
+            }
+            else {
+                Write-Host "$(Get-Date) Skipping remediation tasks because DoNotRemediate was used." -ForegroundColor Yellow
+            }
+            
+            If($Modules_Error.Count -gt 0) {
+                Write-Host "$(Get-Date) The following modules have errors (a property value is True) that must be remediated:" -ForegroundColor Red
+                if ($RemoveMultipleModuleVersions) {
+                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+                }
+                else {
+                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
+                }
+                
+                if ($RemoveMultipleModuleVersions -and ($Modules_Error | Where-Object {$_.Multiple -eq $true})){
+                    Write-Host "Paths to modules with multiple versions:"
+                    foreach ($m in ($Modules_Error | Where-Object {$_.Multiple -eq $true})) {
+                        Write-Host ""
+                        Write-Host "Module:" -NoNewline
+                        $m | Select-Object -ExpandProperty Module
+                        Write-Host "Path:"
+                        $m | Select-Object -ExpandProperty Path
+                        Write-Host ""
+                    }
+                }
+                
+                # Don't continue to check connections
+                Exit-Script
+                throw "$(Get-Date) The above modules must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
+                
             }
         }
     }
@@ -1830,9 +1946,10 @@ Function Install-SOAPrerequisites
 
     #>
 
-    # WinRM Basic Authentication
-    $CheckResults += Invoke-WinRMBasicCheck
-
+    if ($ModuleCheck -or $ConnectCheck) {
+        # WinRM Basic Authentication
+        $CheckResults += Invoke-WinRMBasicCheck
+    }
     <#
 
         Perform the connection check
@@ -1853,17 +1970,15 @@ Function Install-SOAPrerequisites
         # When AzureADAppCheck is run by itself, this script will not be connected to Azure AD
         If((Get-AzureADConnected) -eq $False) {
             switch ($O365EnvironmentName) {
-                "Commercial"   {$AADConnection = Connect-AzureAD | Out-Null;break}
-                "USGovGCC"     {$AADConnection = Connect-AzureAD | Out-Null;break}
-                "USGovGCCHigh" {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-                "USGovDoD"     {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-                "Germany"      {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
-                "China"        {$AADConnection = Connect-AzureAD -AzureEnvironmentName AzureChinaCloud | Out-Null}
+                "Commercial"   {Connect-AzureAD | Out-Null;break}
+                "USGovGCC"     {Connect-AzureAD | Out-Null;break}
+                "USGovGCCHigh" {Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
+                "USGovDoD"     {Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
+                "Germany"      {Connect-AzureAD -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
+                "China"        {Connect-AzureAD -AzureEnvironmentName AzureChinaCloud | Out-Null}
             }
         }
 
-        $ATPLicensed = Get-LicenseStatus -LicenseType ATPP2
-        Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
         $AppRoles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
         Import-MSAL
@@ -1942,6 +2057,7 @@ Function Install-SOAPrerequisites
 
             $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName 
 
+            Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
             switch ($O365EnvironmentName) {
                 "Commercial"   {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
                 "USGovGCC"     {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1995,12 +2111,22 @@ Function Install-SOAPrerequisites
     {
 
         Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
-        $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,NewerAvailable
+        if ($RemoveMultipleModuleVersions) {
+            $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,NewerAvailable
+        }
+        else {
+            $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,NewerAvailable
+        }
         
         If($Modules_Error.Count -gt 0) 
         {
             Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-            $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+            if ($RemoveMultipleModuleVersions) {
+                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
+            }
+            else {
+                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
+            }
 
             $CheckResults += New-Object -TypeName PSObject -Property @{
                 Check="Module Installation"
@@ -2078,5 +2204,5 @@ Function Install-SOAPrerequisites
         }
     }
 
-    Stop-Transcript
+   Exit-Script
 }
