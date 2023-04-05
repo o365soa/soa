@@ -36,23 +36,27 @@ In order to install the SOA module and run the prerequisites script, you must ha
       
       `Remove-Module PowerShellGet` (This command removes any loaded PowerShellGet module from the current session.)
       
-<br>
 * WinRM Basic authentication is not disabled
-   * This is required for the connection to Security & Compliance Center in the Exchange Online module. Basic authentication is not used, but the access token is sent in the Basic authentication header for any connection that uses WinRM, including Security & Compliance Center.
+   
+   * This is required for the connection to Security & Compliance Center in the Exchange Online module. If it is disabled, the connection test to Security & Compliance Center will be skipped. It must be enabled, however, for the data collection to be successful on the first day of the engagement. **Note**: Basic authentication is not used, but the access token is sent in the Basic authentication header for all connections that uses WinRM, including Security & Compliance Center.
+   * To enable WinRM Basic, run PowerShell as administrator and run the follwing:
+      `Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name AllowBasic -Value 1`.
+      
+     If it has been disabled via Group Policy, the previous command will fail, so you will need to edit the registry: Run regedit.exe and navigate to HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WinRM\Client and change the data for the "AllowBasic" value from 0 to 1.
 
 ### Permissions
-* Local admin rights are not required on the collection machine except if the Active Directory module is not installed or WinRM Basic is disabled.
-   * To enable WinRM Basic, run PowerShell as administrator and run `Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name AllowBasic -Value 1`. Or you can start Regedit and navigate to HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WinRM\Client and change the data for the "AllowBasic" value from 0 to 1.
-* For the connection tests, the account used does not require any admin role except for the connection to Azure AD using the v2 Preview module: To be able to discover the URL to use to connect to SharePoint Online, the account used to connect to Azure AD needs to have the Directory Readers role; to be able to create and test the Azure AD application, the needed roles are detailed next.
-* Azure AD application:
-   * For the application to be created, any user in the tenant can be used, by default. If this setting has been disabled, the account used to connect to Azure AD with the v2 Preview module must have the Global Administrator, Application Administrator, Cloud Application Administraor, or Application Developer role.
-   * To be able to grant consent to the application, a user with Global Administrator or Privileged Role Administrator role is required. (The account used to create the application can be different than the account used to grant consent.)
-   * To test the application, the account used to connect to Azure AD with the v2 Preview module must have the Application Administrator, or Cloud Application Administraor role or be assigned the owner role in the "Office 365 Security Optimization Assessment" application.
+* Local admin (running PowerShell as an adminisrator) is not required except if the Active Directory module needs to be installed (see [below](#active-directory-module)).
+* For the connections to each workload, the account used to sign in does not require an admin role except for the connection to Azure AD using the v2 Preview module, as indicated:
+   * To be able to discover the URL to use to connect to SharePoint Online, the account used to connect to Azure AD needs to have the Directory Readers role (or "higher").
+   * To be able to create and test the Azure AD application:
+      * For the application to be created, any user in the tenant can be used, by default. If this setting has been disabled, the account used to connect to Azure AD with the v2 Preview module must have the Global Administrator, Application Administrator, Cloud Application Administraor, or Application Developer role.
+      * To be able to grant consent to the application, a user with Global Administrator or Privileged Role Administrator role is required. (The account used to create the application can be different than the account used to grant consent.)
+     * To test the application, the account used to connect to Azure AD with the v2 Preview module must have the Application Administrator or Cloud Application Administraor role, or be assigned the owner role in the "Office 365 Security Optimization Assessment" application.
 
 ### Collection machine
 The collection machine can be any workstation or server, physical or virtual, that can connect via PowerShell to Azure AD, Microsoft Graph, Exchange Online, Security & Compliance Center, SharePoint Online, Microsoft Teams, and Power Platform. It does not need to be AD- or AAD-joined unless you have Conditional Access policies requiring it for these connections.
 
-If directory synchronisation is used, a script will need to be executed on a domain-joined machine that has the Active Directory PowerShell module installed.
+If directory synchronisation is used, a script will need to be executed on a domain-joined machine that has the Active Directory PowerShell module installed (whether the collection machine or a different machine).
 
 ### Running the prerequisites script
 
@@ -61,7 +65,7 @@ If directory synchronisation is used, a script will need to be executed on a dom
 
    `Install-Module SOA`
 
-3. Run the following to install the prerequisites (important: see below for optional parameters that may be applicable):
+3. Run the following to install the prerequisites (**important**: see below for optional parameters that may be applicable):
 
    `Install-SOAPrerequisites`
 
@@ -76,7 +80,7 @@ If traffic to Microsoft 365 routes via proxy infrastructure and the prerequisite
 
 ### Sovereign clouds
 
-If the Office 365 tenant is in a sovereign cloud environment, the `-O365EnvironmentName` parameter must be used. (The default value is `Commercial`, so the parameter is only required if it is in any of the environments below).
+If the Office 365 tenant is in a sovereign cloud environment, the `-O365EnvironmentName` parameter must be used with one of the values below. (The default value is `Commercial`, so the parameter is only required for non-commercial clouds):
 
 * Use `USGovGCC` for Microsoft Cloud for US Government (GCC\GCC-Moderate)
 * Use `USGovGCCHigh` for Microsoft Cloud for US Government L4 (GCC-High)
@@ -86,7 +90,7 @@ If the Office 365 tenant is in a sovereign cloud environment, the `-O365Environm
 
 ### Active Directory module
 
-If directory synchronisation is used and the Active Directory module is not installed and you cannot run PowerShell as a local admin, you can skip the installation of the module by using `-SkipAdModule`. A machine with the module installed will be needed on the first day of the engagement to collect information about the AD environment. The module can be installed on a machine using `-AdModuleOnly` or manually via some other method.
+If directory synchronisation is used and the Active Directory module is not installed and you cannot run PowerShell as a local admin, you can skip the installation of the module by using `-SkipAdModule`. A machine with the module installed will be needed on the first day of the engagement to collect information about the AD environment. The module can be installed on a machine using `-AdModuleOnly` or manually via another method.
 
 ## Azure AD application
 
