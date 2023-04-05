@@ -33,6 +33,7 @@ In order to install the SOA module and run the prerequisites script, you must ha
    * PowerShell Gallery requires TLS 1.2.  While PowerShell and Windows support TLS 1.2, in some proxy environments the proxy server might negotiate a lower version, which will cause a Resource Unavailable error when attempting to install any module from PowerShell Gallery.  PowerShellGet 2.2.4 works around this issue by temporarily forcing TLS 1.2 when installing any module from PowerShell Gallery and then changing back to the OS default.  If at least PowerShellGet 2.2.4 is not installed, run the following to install the latest version:<br><br>
    
       `Install-Module PowerShellGet -Force`
+      
       `Remove-Module PowerShellGet` (This command removes any loaded PowerShellGet module from the current session.)
       
 <br>
