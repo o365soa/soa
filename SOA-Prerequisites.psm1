@@ -342,8 +342,7 @@ Function Set-AzureADAppPermission {
     
     #>
     
-    ForEach($ResourceRolesGrouping in ($Roles | Group-Object Resource)) 
-    {
+    foreach($ResourceRolesGrouping in ($Roles | Group-Object Resource)) {
 
         # Define the resource
         $Resource = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
@@ -351,8 +350,8 @@ Function Set-AzureADAppPermission {
 
         # Add the scopes
         ForEach($Role in $($ResourceRolesGrouping.Group)) {
-            Write-Verbose "$(Get-Date) Set-AzureADAppPermissions Add $($Role.Name) $($Role.ID) O365EnvironmentName $O365EnvironmentName"
-            $Perm = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList $Role.ID,"Role"
+            Write-Verbose "$(Get-Date) Set-AzureADAppPermissions Add $($Role.Name) $($Role.ID) $($Role.Type) O365EnvironmentName $O365EnvironmentName"
+            $Perm = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList $Role.ID,$Role.Type
             $Resource.ResourceAccess += $Perm
         }
 
@@ -1445,44 +1444,57 @@ Function Get-RequiredAppPermissions {
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="bf394140-e372-4bf9-a898-299cfc7564e5"
         Name="SecurityEvents.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph    
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="dc5007c0-2d7d-4c42-879c-2dab87571379"
         Name="IdentityRiskyUser.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
         Name="IdentityRiskEvent.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="dc377aa6-52d8-4e23-b271-2a7ae04cedf3"
         Name="DeviceManagementConfiguration.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="b0afded3-3588-46d8-8b3d-9842eff778da"
         Name="AuditLog.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="7ab1d382-f21e-4acd-a863-ba3e13f7da61"
         Name="Directory.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="246dd0d5-5bd0-4def-940b-0421030a5b68"
         Name="Policy.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="45cc0394-e837-488b-a098-1918f48d186c"
         Name="SecurityIncident.Read.All"
+        Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="78ce3f0f-a1ce-49c2-8cde-64b5c0896db4"
+        Name="user_impersonation"
+        Type='Scope'
+        Resource="00000007-0000-0000-c000-000000000000" # Dynamics 365
+    }
     Return $AppRoles
 }
 
