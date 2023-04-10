@@ -150,7 +150,7 @@ Function Reset-SOAAppSecret {
     )
 
     # Provision a short lived credential +48 hrs.
-    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
+    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.Id -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
 
     Return $clientsecret.Value
 }
@@ -159,11 +159,11 @@ function Remove-SOAAppSecret {
     # Removes any client secrets associated with the application
     param ($app)
 
-    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId
+    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.Id
     foreach ($secret in $secrets) {
         # Suppress errors in case a secret no longer exists
         try {
-            Remove-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId -KeyId $secret.KeyId
+            Remove-AzureADApplicationPasswordCredential -ObjectId $app.Id -KeyId $secret.KeyId
         }
         catch {}
     }
@@ -326,7 +326,7 @@ Function Set-AzureADAppPermission {
     )
 
     Write-Host "$(Get-Date) Setting Azure AD App Permissions for Application"
-    Write-Verbose "$(Get-Date) Set-AzureADAppPermissions App $($App.ObjectId) O365EnvironmentName $O365EnvironmentName"
+    Write-Verbose "$(Get-Date) Set-AzureADAppPermissions App: $($App.Id) Cloud: $O365EnvironmentName"
 
     $RequiredResources = @()
     $PermissionSet = $False
@@ -345,13 +345,15 @@ Function Set-AzureADAppPermission {
     foreach($ResourceRolesGrouping in ($Roles | Group-Object Resource)) {
 
         # Define the resource
-        $Resource = New-Object -TypeName "Microsoft.Open.AzureAD.Model.RequiredResourceAccess"
+        $Resource = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphRequiredResourceAccess
         $Resource.ResourceAppId = $ResourceRolesGrouping.Name
 
-        # Add the scopes
+        # Add the permissions
         ForEach($Role in $($ResourceRolesGrouping.Group)) {
-            Write-Verbose "$(Get-Date) Set-AzureADAppPermissions Add $($Role.Name) $($Role.ID) $($Role.Type) O365EnvironmentName $O365EnvironmentName"
-            $Perm = New-Object -TypeName "Microsoft.Open.AzureAD.Model.ResourceAccess" -ArgumentList $Role.ID,$Role.Type
+            Write-Verbose "$(Get-Date) Set-AzureADAppPermissions Add $($Role.Type) $($Role.Name) ($($Role.ID)) in $O365EnvironmentName cloud"
+            $Perm = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphResourceAccess
+            $Perm.Id = $Role.ID
+            $Perm.Type = $Role.Type
             $Resource.ResourceAccess += $Perm
         }
 
@@ -360,18 +362,15 @@ Function Set-AzureADAppPermission {
 
     }
     
-    Try
-    {
-        Set-AzureADApplication -ObjectId $App.ObjectId -RequiredResourceAccess $RequiredResources
+    try {
+        Update-MgApplication -ApplicationId $App.Id -RequiredResourceAccess $RequiredResources
         $PermissionSet = $True
     }
-    Catch
-    {
+    catch {
         $PermissionSet = $False
     }
 
-    If($PermissionSet -eq $True)
-    {
+    if ($PermissionSet -eq $True) {
         Write-Host "$(Get-Date) Verifying new permissions applied (this may take up to 5 minutes)..."
         If($(Invoke-AppPermissionCheck -App $App -NewPermission) -eq $False)
         {    
@@ -379,9 +378,8 @@ Function Set-AzureADAppPermission {
         }
     }
 
-    If($PerformConsent -eq $True)
-    {
-        If((Invoke-Consent -App $AzureADApp -O365EnvironmentName $O365EnvironmentName) -eq $True) {
+    if ($PerformConsent -eq $True) {
+        If((Invoke-Consent -App $App -O365EnvironmentName $O365EnvironmentName) -eq $True) {
             $ConsentPerformed = $True
         }
     }
@@ -435,7 +433,7 @@ Function Invoke-AppPermissionCheck
     {
 
         # Refresh roles from AAD
-        $App = Get-AzureADApplication -ObjectId $App.ObjectId
+        $App = Get-MgApplication -ApplicationId $App.Id
 
         $Missing = @()
 
@@ -603,6 +601,7 @@ Function Invoke-Consent {
         "Germany"      {$AuthLocBase = "https://login.microsoftonline.de";break}
         "China"        {$AuthLocBase = "https://login.partner.microsoftonline.cn"}
     }
+    # Need to use the Application ID, not Object ID
     $Location = "$AuthLocBase/common/adminconsent?client_id=$($App.AppId)&state=12345&redirect_uri=https://soaconsentreturn.azurewebsites.net"
     
     Write-Important
@@ -638,13 +637,17 @@ Function Install-AzureADApp {
 
     # Create the Azure AD Application
     Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
-    $AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
-    
+    #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
+    $AzureADApp = New-MgApplication -DisplayName "Office 365 Security Optimization Assessment" `
+        -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")} `
+        -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
+        -SignInAudience AzureADMyOrg
+
     # Set up the correct permissions
     Set-AzureADAppPermission -App $AzureADApp -PerformConsent:$True -O365EnvironmentName $O365EnvironmentName
 
     # Return the newly created application
-    Return (Get-AzureADApplication -ObjectId $AzureADApp.ObjectId)
+    Return (Get-MgApplication -ApplicationId $AzureADApp.Id)
     
 }
 
@@ -1037,6 +1040,7 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "Graph") {
         $RequiredModules += "Microsoft.Graph.Authentication"
         $RequiredModules += "Microsoft.Graph.Security"
+        $RequiredModules += "Microsoft.Graph.Applications"
     }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
@@ -1570,21 +1574,33 @@ Function Invoke-SOAVersionCheck
 
 }
 
-Function Get-SOAAzureADApp
-{
+function Get-SOAAzureADApp {
     Param(
         [string]$O365EnvironmentName
     )
 
     # Determine if Azure AD Application Exists
-    $AzureADApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
+    #$AzureADApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
+    $AzureADApp = Get-MgApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
 
-    If(!$AzureADApp) 
-    {
+    if (!$AzureADApp) {
         if ($DoNotRemediate -eq $false) {
             Write-Host "$(Get-Date) Installing Azure AD Application..."
             $AzureADApp = Install-AzureADApp -O365EnvironmentName $O365EnvironmentName
             Write-Verbose "$(Get-Date) Get-SOAAzureADApp App $($AzureADApp.ObjectId)"
+        }
+    }
+    else {
+        # Check if public client URI is set
+        $pcRUrl = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
+        if ($AzureADApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
+            if ($DoNotRemediate -eq $false){
+                # Set as public client to be able to collect from Dynamics with delegated scope
+                Write-Verbose "$(Get-Date) Setting Azure AD application public client redirect URI..."
+                Update-MgApplication -ApplicationId $AzureADApp.AppId -PublicClient @($pcRUrl)
+                # Get app again so public client is set for chekcing DoNotRemediate in calling function
+                $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.AppId
+            }
         }
     }
 
@@ -1991,6 +2007,17 @@ Function Install-SOAPrerequisites
             }
         }
 
+        Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
+        switch ($O365EnvironmentName) {
+            "Commercial"   {$cloud = 'Global'}
+            "USGovGCC"     {$cloud = 'Global'}
+            "USGovGCCHigh" {$cloud = 'USGov'}
+            "USGovDoD"     {$cloud = 'USGovDoD'}
+            "Germany"      {$cloud = 'Germany'}
+            "China"        {$cloud = 'China'}            
+        }
+        Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud
+
         $AppRoles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
         Import-MSAL
@@ -2000,18 +2027,26 @@ Function Install-SOAPrerequisites
         # Get the default MSOL domain
         $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
 
-        # Determine if Azure AD Application Exists and create if doesnt
+        # Determine if Azure AD Application exists and is public client, create if doesnt
         $AzureADApp = Get-SOAAzureADApp -O365EnvironmentName $O365EnvironmentName
 
-        If($AzureADApp) 
-        {
-
-            # Pass the AAD app check
-            $CheckResults += New-Object -Type PSObject -Property @{
-                Check="AAD Application"
-                Pass=$True
+        If($AzureADApp) {
+            # Check if public client redirect URI not set because DoNotRemediate is True
+            if ($AzureADApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -and $DoNotRemediate) {
+                # Fail the AAD app check
+                $CheckResults += New-Object -Type PSObject -Property @{
+                    Check="AAD Application"
+                    Pass=$false
+                }
             }
-
+            else {
+                # Pass the AAD app check
+                $CheckResults += New-Object -Type PSObject -Property @{
+                    Check="AAD Application"
+                    Pass=$true
+                }
+            }
+ 
             # Reset secret
             $clientsecret = Reset-SOAAppSecret -App $AzureADApp -Task "Prereq"
             Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
