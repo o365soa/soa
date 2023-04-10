@@ -427,7 +427,7 @@ Function Invoke-AppPermissionCheck
     $SleepTime = 10
     $Counter = 0
 
-    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.ObjectId) Role Count $($Roles.Count)"
+    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.Id) Role Count $($Roles.Count)"
 
     While($Counter -lt $MaxTime)
     {
@@ -605,19 +605,20 @@ Function Invoke-Consent {
     $Location = "$AuthLocBase/common/adminconsent?client_id=$($App.AppId)&state=12345&redirect_uri=https://soaconsentreturn.azurewebsites.net"
     
     Write-Important
-    Write-Host "In 20 seconds, a window will load asking for you to consent to Security Optimization Assessment reading information in your tenant."
-    write-Host "You need to log on and consent as a Global Administrator"
-    Write-Host "When consent is complete - a green OK message should appear - You can close the browser window at this point."
+    Write-Host "In 10 seconds, a page in the default browser will load and ask you to grant consent to Security Optimization Assessment."
+    write-Host "You must sign in with an account that has Global Administrator or Privileged Role Administrator role."
+    Write-Host "After granting consent, a green OK message will appear; you can then close the browser page."
     Write-Host ""
-    Write-Host "For more information about this consent, please review the Scoping Email."
+    Write-Host "For more information about this consent, go to https://github.com/o365soa/soa."
     Write-Host ""
-    Write-Host "If you have Single Sign On (SSO) turned on, and you are not logged on as a Global Administrator, you will need to copy the link below in to an in-private browser session."
-    Write-Host ""
-    Write-Host "If the browser window does not load in 20 seconds, copy and paste the following in to a browser:"
+    Write-Host "If you use single sign-in (SSO) and you are not signed in with an account that has permission to grant consent,"
+    Write-Host "you will need to copy the link and paste it in an private browser session."
     Write-Host ""
     Write-Host $Location
     Write-Host ""
-    Start-Sleep 20
+    Write-Host "(If the browser window does not open in 10 seconds, copy it and paste it in a browser tab.)"
+    Write-Host ""
+    Start-Sleep 10
     Start-Process $Location
 
     While($(Read-Host -Prompt "Type 'yes' when you have completed consent") -ne "yes") {}
@@ -1587,7 +1588,7 @@ function Get-SOAAzureADApp {
         if ($DoNotRemediate -eq $false) {
             Write-Host "$(Get-Date) Installing Azure AD Application..."
             $AzureADApp = Install-AzureADApp -O365EnvironmentName $O365EnvironmentName
-            Write-Verbose "$(Get-Date) Get-SOAAzureADApp App $($AzureADApp.ObjectId)"
+            Write-Verbose "$(Get-Date) Get-SOAAzureADApp App $($AzureADApp.Id)"
         }
     }
     else {
@@ -1597,9 +1598,9 @@ function Get-SOAAzureADApp {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
                 Write-Verbose "$(Get-Date) Setting Azure AD application public client redirect URI..."
-                Update-MgApplication -ApplicationId $AzureADApp.AppId -PublicClient @($pcRUrl)
-                # Get app again so public client is set for chekcing DoNotRemediate in calling function
-                $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.AppId
+                Update-MgApplication -ApplicationId $AzureADApp.Id -PublicClient @($pcRUrl)
+                # Get app again so public client is set for checking DoNotRemediate in calling function
+                $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
             }
         }
     }
@@ -2016,10 +2017,10 @@ Function Install-SOAPrerequisites
             "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}            
         }
-        Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud
-
-        $AppRoles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
-
+        if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
+            Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud
+        }
+        
         Import-MSAL
 
         Write-Host "$(Get-Date) Checking Azure AD Application..."
@@ -2027,11 +2028,11 @@ Function Install-SOAPrerequisites
         # Get the default MSOL domain
         $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
 
-        # Determine if Azure AD Application exists and is public client, create if doesnt
+        # Determine if Azure AD Application exists (and has public client redirect URI set), create if doesnt
         $AzureADApp = Get-SOAAzureADApp -O365EnvironmentName $O365EnvironmentName
 
         If($AzureADApp) {
-            # Check if public client redirect URI not set because DoNotRemediate is True
+            # Check if public client redirect URI not set for existing app because DoNotRemediate is True
             if ($AzureADApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -and $DoNotRemediate) {
                 # Fail the AAD app check
                 $CheckResults += New-Object -Type PSObject -Property @{
@@ -2059,7 +2060,7 @@ Function Install-SOAPrerequisites
             {
                 # Set up the correct AAD App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
-                If((Set-AzureADAppPermission -App $AzureADApp -Roles $AppRoles -PerformConsent:$True -O365EnvironmentName $O365EnvironmentName) -eq $True) {
+                If((Set-AzureADAppPermission -App $AzureADApp -PerformConsent:$True -O365EnvironmentName $O365EnvironmentName) -eq $True) {
                     # Perform check again after setting permissions
                     $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 }
