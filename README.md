@@ -94,9 +94,10 @@ If directory synchronisation is used and the Active Directory module is not inst
 
 ## Azure AD application
 
-An Azure AD application is required in order to use Microsoft Graph. Installation and configuration of this application is performed by the prerequisites script.
+An Azure AD application is required in order to use Microsoft Graph and other APIs. Installation and configuration of this application is performed by the prerequisites script.
 
 The permission scope of this application is limited to the following:
+#### Microsoft Graph API:
 * **SecurityEvents.Read.All** (Retrieve active security events within your tenant.)
 * **IdentityRiskyUser.Read.All** (Retrieve identity risk events raised by Azure Identity Protection.)
 * **IdentityRiskEvent.Read.All** (Retrieve identity risk events raised by Azure Identity Protection.)
@@ -105,6 +106,8 @@ The permission scope of this application is limited to the following:
 * **Directory.Read.All** (Retrieve sign-in activity for user and guest accounts. Both this scope and the previous scope are required in order to get sign-in activity.)
 * **Policy.Read.All** (Retrieve Azure AD authorization and conditional access policies.)
 * **SecurityIncident.Read.All** (Retrieve Defender security incidents.)
+#### Dynamics CRM API:
+* **user_impersonation** (Retrieve Dataverse settings.)
 
 ### Azure AD application security
 
