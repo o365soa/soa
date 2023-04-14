@@ -492,7 +492,6 @@ Function Invoke-AppTokenRolesCheck {
         [string]$O365EnvironmentName
     )
 
-    $MissingRoles = @()
     switch ($O365EnvironmentName) {
         "Commercial"   {$GraphResource = "https://graph.microsoft.com/";break}
         "USGovGCC"     {$GraphResource = "https://graph.microsoft.com/";break}
@@ -512,7 +511,7 @@ Function Invoke-AppTokenRolesCheck {
     # Check Graph endpoint
     While($Counter -lt $MaxTime)
     {
-
+        $MissingRoles = @()
         Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Graph endpoint"
         # Obtain the token
         $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -O365EnvironmentName $O365EnvironmentName
