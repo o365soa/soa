@@ -427,7 +427,7 @@ Function Invoke-AppPermissionCheck
     $SleepTime = 10
     $Counter = 0
 
-    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.Id) Role Count $($Roles.Count)"
+    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.AppId) Role Count $($Roles.Count)"
 
     While($Counter -lt $MaxTime)
     {
