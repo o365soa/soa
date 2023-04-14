@@ -16,6 +16,7 @@ The latest version of the following modules are installed:
 * From the Microsoft Graph PowerShell SDK: 
    * Microsoft.Graph.Authentication
    * Microsoft.Graph.Security
+   * Microsoft.Graph.Applications
 * Active Directory
 
 Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from your PS Module Path to prevent conflicts.
