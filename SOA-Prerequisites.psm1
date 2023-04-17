@@ -1597,7 +1597,7 @@ function Get-SOAAzureADApp {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
                 Write-Verbose "$(Get-Date) Setting Azure AD application public client redirect URI..."
-                Update-MgApplication -ApplicationId $AzureADApp.Id -PublicClient @($pcRUrl)
+                Update-MgApplication -ApplicationId $AzureADApp.Id -PublicClient @{'RedirectUris'=$pcRUrl}
                 # Get app again so public client is set for checking DoNotRemediate in calling function
                 $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
             }
