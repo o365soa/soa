@@ -87,7 +87,7 @@ PowerShellVersion = '5.1'
 NestedModules = @("SOA-Prerequisites.psm1","SOA-ImportExport.psm1")
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = @("Install-SOAPrerequisites","Test-SOAApplication","Invoke-SOAVersionCheck","Export-SOARPS","Invoke-WinRMBasicCheck","Get-LicenseStatus","Import-MSAL","Get-MSALAccessToken","Reset-SOAAppSecret","Remove-SOAAppSecret")
+FunctionsToExport = @("Install-SOAPrerequisites","Test-SOAApplication","Invoke-SOAVersionCheck","Export-SOARPS","Invoke-WinRMBasicCheck","Get-LicenseStatus","Import-MSAL","Get-MSALAccessToken","Reset-SOAAppSecret","Remove-SOAAppSecret","Reset-SOAAppSecretv2","Remove-SOAAppSecretv2")
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()

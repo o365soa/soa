@@ -141,7 +141,23 @@ function Get-SharePointAdminUrl
 Function Reset-SOAAppSecret {
     <#
     
-        This function creates a new secret for the application
+        This function creates a new secret for the application when the app object is created from Get-AzureADApplication
+    
+    #>
+    Param (
+        $App,
+        $Task
+    )
+
+    # Provision a short lived credential +48 hrs.
+    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
+
+    Return $clientsecret.Value
+}
+Function Reset-SOAAppSecretv2 {
+    <#
+    
+        This function creates a new secret for the application when the app object is created from Get-MgApplication
     
     #>
     Param (
@@ -156,7 +172,21 @@ Function Reset-SOAAppSecret {
 }
 
 function Remove-SOAAppSecret {
-    # Removes any client secrets associated with the application
+    # Removes any client secrets associated with the application when the application object is created by Get-AzureADApplication
+    param ($app)
+
+    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId
+    foreach ($secret in $secrets) {
+        # Suppress errors in case a secret no longer exists
+        try {
+            Remove-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId -KeyId $secret.KeyId
+        }
+        catch {}
+    }
+}
+
+function Remove-SOAAppSecretv2 {
+    # Removes any client secrets associated with the application when the application object is created by Get-MgApplication
     param ($app)
 
     $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.Id
@@ -433,7 +463,10 @@ Function Invoke-AppPermissionCheck
     {
 
         # Refresh roles from AAD
-        $App = Get-MgApplication -ApplicationId $App.Id
+        # Set App ID based on property being from Get-MgApplication or Get-AzureADApplication
+        if ($App.ObjectId) {$appId = $App.ObjectId} else {$appId = $App.Id}
+        #$App = Get-MgApplication -ApplicationId $appId
+        $App = Get-AzureADApplication -ObjectId $appId
 
         $Missing = @()
 
@@ -451,7 +484,7 @@ Function Invoke-AppPermissionCheck
 
         If($Provisioned -eq $True)
         {
-            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.ObjectId) Role Count $($Roles.Count) OK"
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $appId Role Count $($Roles.Count) OK"
             Break
         } 
         Else 
@@ -2048,7 +2081,7 @@ Function Install-SOAPrerequisites
             }
  
             # Reset secret
-            $clientsecret = Reset-SOAAppSecret -App $AzureADApp -Task "Prereq"
+            $clientsecret = Reset-SOAAppSecretv2 -App $AzureADApp -Task "Prereq"
             Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
             Start-Sleep 10
 
@@ -2139,7 +2172,7 @@ Function Install-SOAPrerequisites
                 }
             }
             # Remove client secret
-            Remove-SOAAppSecret -app $AzureADApp
+            Remove-SOAAppSecretv2 -app $AzureADApp
         } 
         Else 
         {
