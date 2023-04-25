@@ -1682,7 +1682,7 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [ValidateSet("AAD","MSOL","EXO","SCC","SPO","PP","Teams","Graph")][string[]]$Bypass,
+        [ValidateSet("AAD","MSOL","EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
         [Switch]$UseProxy,
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
