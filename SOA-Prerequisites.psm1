@@ -2050,7 +2050,7 @@ Function Install-SOAPrerequisites
             "China"        {$cloud = 'China'}            
         }
         if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
-            Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud
+            Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process"
         }
         
         Import-MSAL
