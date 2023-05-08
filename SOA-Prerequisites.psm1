@@ -1072,7 +1072,6 @@ Function Invoke-SOAModuleCheck {
     }
     If($Bypass -notcontains "Graph") {
         $RequiredModules += "Microsoft.Graph.Authentication"
-        $RequiredModules += "Microsoft.Graph.Security"
         $RequiredModules += "Microsoft.Graph.Applications"
     }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
@@ -2158,7 +2157,7 @@ Function Install-SOAPrerequisites
                     Pass=$True
                 }
 
-                if (Get-MgSecuritySecureScore -Top 1) {
+                if (Get-MgApplication -Top 1) {
                     $CheckResults += New-Object -Type PSObject -Property @{
                         Check="Graph SDK Command"
                         Pass=$True

@@ -15,7 +15,6 @@ The latest version of the following modules are installed:
 * Power Apps admin
 * From the Microsoft Graph PowerShell SDK: 
    * Microsoft.Graph.Authentication
-   * Microsoft.Graph.Security
    * Microsoft.Graph.Applications
 * Active Directory
 
