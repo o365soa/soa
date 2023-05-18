@@ -726,7 +726,11 @@ Function Get-ModuleStatus {
     }
 
     # Check version in PS Gallery
-    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    If ($ModuleName -Like "Microsoft.Graph.*") { # Avoid immediately upgrading to the Graph SDK 2.0 modules once they release
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.99)
+    } Else {
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    }
     If($PSGalleryModule.Count -eq 1) {
         [version]$GalleryVersion = $PSGalleryModule.Version
         If($GalleryVersion -gt $InstalledModule.Version) {
