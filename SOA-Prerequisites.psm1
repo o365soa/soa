@@ -726,7 +726,11 @@ Function Get-ModuleStatus {
     }
 
     # Check version in PS Gallery
-    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    If ($ModuleName -Like "Microsoft.Graph.*") { # Avoid immediately upgrading to the Graph SDK 2.0 modules once they release
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.99)
+    } Else {
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    }
     If($PSGalleryModule.Count -eq 1) {
         [version]$GalleryVersion = $PSGalleryModule.Version
         If($GalleryVersion -gt $InstalledModule.Version) {
@@ -863,10 +867,16 @@ Function Install-ModuleFromGallery {
     # Install the module from PSGallery specifying Force
     # AllowClobber allows Teams module to be installed when SfBO module is installed/loaded
     if (Get-IsAdministrator) {
-        Install-Module $Module -Force -Scope:AllUsers -AllowClobber
+        $Scope = "AllUsers"
     }
     else {
-        Install-Module $Module -Force -Scope:CurrentUser -AllowClobber
+        $Scope = "CurrentUser"
+    }
+
+    If ($Module -Like "Microsoft.Graph.*") { # Avoid immediately upgrading to the Graph SDK 2.0 modules once they release
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber -MaximumVersion 1.99
+    } Else {
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber
     }
 
     If($Update) {
