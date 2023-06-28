@@ -592,27 +592,6 @@ Function Invoke-AppTokenRolesCheck {
     return $return
 }
 
-Function Invoke-WinRMBasicCheck {
-    <#
-    
-        Checks to determine if WinRM basic authentication is enabled.
-        This is required for Exchange Online and Teams modules (the latter when connecting via RPS).
-    
-    #>
-
-    # Default for WinRM Client is enabled, so check whether it has been explicitly disabled.
-    If (((Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WSMAN\Client\" -Name "auth_basic" -ErrorAction:SilentlyContinue).auth_basic -eq 0) -Or (Get-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name "AllowBasic" -ErrorAction:SilentlyContinue).AllowBasic -eq 0) { 
-        $Result=$False
-    } Else {
-        $Result=$True
-    }
-
-    Return New-Object -TypeName PSOBject -Property @{
-        Check="WinRM Basic Authentication"
-        Pass=$Result
-    }
-
-}
 
 Function Invoke-Consent {
     <#
@@ -1237,23 +1216,18 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        # Skip connection test if WinRM Basic is disabled
-        if ((Invoke-WinRMBasicCheck).Pass) {
-            Write-Host "$(Get-Date) Connecting to SCC..."
-            Get-PSSession | Where-Object {$_.ComputerName -like "*protection.o*"} | Remove-PSSession
-            switch ($O365EnvironmentName) {
-                "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-                "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-                "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
-                "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
-                "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common | Out-Null;break}
-                "China"        {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common | Out-Null}
-            }
+        Write-Host "$(Get-Date) Connecting to SCC..."
+        Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
+        switch ($O365EnvironmentName) {
+            "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+            "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
+            "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
+            "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common | Out-Null;break}
+            "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common | Out-Null;break}
+            "China"        {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common | Out-Null}
         }
-        else {
-            Write-Host "$(Get-Date) Skipping connection test for SCC because WinRM Basic is disabled. This must be remediated prior to the engagement." -ForegroundColor Red
-        }
-        If((Get-PSSession | Where-Object {$_.ComputerName -like "*protection.o*" -or $_.ComputerName -like "*protection.partner.o*"}).State -eq "Opened") { $Connect = $True } Else { $Connect = $False }
+
+        If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") { $Connect = $True } Else { $Connect = $False }
 
         # Has test command been imported. Not actually running it
         # Cmdlet available to any user
@@ -2010,16 +1984,6 @@ Function Install-SOAPrerequisites
         }
     }
 
-    <#
-
-        Generic checks
-
-    #>
-
-    if ($ModuleCheck -or $ConnectCheck) {
-        # WinRM Basic Authentication
-        $CheckResults += Invoke-WinRMBasicCheck
-    }
     <#
 
         Perform the connection check
