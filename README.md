@@ -36,14 +36,6 @@ In order to install the SOA module and run the prerequisites script, you must ha
       
       `Remove-Module PowerShellGet` (This command removes any loaded PowerShellGet module from the current session.)
       
-* WinRM Basic authentication is not disabled
-   
-   * This is required for the connection to Security & Compliance Center in the Exchange Online module. If it is disabled, the connection test to Security & Compliance Center will be skipped. It must be enabled, however, for the data collection to be successful on the first day of the engagement. **Note**: Basic authentication is not used, but the access token is sent in the Basic authentication header for all connections that uses WinRM, including Security & Compliance Center.
-   * To enable WinRM Basic, run PowerShell as administrator and run the follwing:
-      `Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows\WinRM\Client\" -Name AllowBasic -Value 1`.
-      
-     If it has been disabled via Group Policy, the previous command will fail, so you will need to edit the registry: Run regedit.exe and navigate to HKEY_LOCAL_MACHINE\Software\Policies\Microsoft\Windows\WinRM\Client and change the data for the "AllowBasic" value from 0 to 1.
-
 ### Permissions
 * Local admin (running PowerShell as an adminisrator) is not required except if the Active Directory module needs to be installed (see [below](#active-directory-module)).
 * For the connections to each workload, the account used to sign in does not require an admin role except for the connection to Azure AD using the v2 Preview module, as indicated:
