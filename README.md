@@ -35,6 +35,7 @@ In order to install the SOA module and run the prerequisites script, you must ha
       `Install-Module PowerShellGet -Force`
       
       `Remove-Module PowerShellGet` (This command removes any loaded PowerShellGet module from the current session.)
+* Configuration of PowerShell execution policies. Verify that the current setting is not *Restricted* by running `Get-ExecutionPolicy`. If it is, then this needs to be changed from Restricted to RemoteSigned by running `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
       
 ### Permissions
 * Local admin (running PowerShell as an adminisrator) is not required except if the Active Directory module needs to be installed (see [below](#active-directory-module)).
