@@ -250,7 +250,7 @@ Function Get-MSALAccessToken {
 
     Write-Verbose "$(Get-Date) Get-MSALAccessToken function called from the pre-reqs module - Tenant: $TenantName ClientID: $ClientID Resource: $Resource SecretLength: $($Secret.Length) O365EnvironmentName: $O365EnvironmentName"
 
-    $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).Build()
+    $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).WithLegacyCacheCompatibility($false).Build()
 
     $Scopes = New-Object System.Collections.Generic.List[string]
     $Scopes.Add("$($Resource)/.default")
