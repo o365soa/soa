@@ -736,7 +736,12 @@ Function Get-ModuleStatus {
     }
 
     # Check version in PS Gallery
-    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    # Control whether 1.x or 2.x of Graph SDK modules are installed
+    If ($UseNewSDK -eq $False -and $ModuleName -Like "Microsoft.Graph.*") {
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.99)
+    } Else {
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    }
 
     If($PSGalleryModule.Count -eq 1) {
         [version]$GalleryVersion = $PSGalleryModule.Version
@@ -880,7 +885,12 @@ Function Install-ModuleFromGallery {
         $Scope = "CurrentUser"
     }
 
-    Install-Module $Module -Force -Scope:$Scope -AllowClobber
+    # Control whether 1.x or 2.x of Graph SDK modules are installed
+    If ($UseNewSDK -eq $False -and $Module -Like "Microsoft.Graph.*") {
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber -MaximumVersion 1.99
+    } Else {
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber
+    }
 
     If($Update) {
         # Remove old versions of the module
@@ -1723,7 +1733,10 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='ModulesOnly')]
         [Switch]$ADModuleOnly,
     [Parameter(ParameterSetName='AzureADAppOnly')]
-        [Switch]$AzureADAppOnly
+        [Switch]$AzureADAppOnly,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ModulesOnly')]
+        [Switch]$UseNewSDK
     )
 
     <#
