@@ -1682,7 +1682,7 @@ Function Test-SOAApplication
     {
         If($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
         # Provide a fallback option for manually providing a token to the Graph SDK
-        If($LegacyTokens){
+        If($LegacyTokens -or $UseNewSDK -eq $false){
             $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
         } Else {
             $TokenCheck = Invoke-AppTokenRolesCheckV2 -O365EnvironmentName $O365EnvironmentName
@@ -1735,6 +1735,7 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='AzureADAppOnly')]
         [Switch]$AzureADAppOnly,
     [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='AzureADAppOnly')]
     [Parameter(ParameterSetName='ModulesOnly')]
         [Switch]$UseNewSDK
     )
@@ -2099,6 +2100,23 @@ Function Install-SOAPrerequisites
             Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
             Start-Sleep 10
 
+            # Reconnect with Application permissions
+            If ($UseNewSDK){
+                Disconnect-MgGraph | Out-Null
+                $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
+                $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($AzureADApp.AppId), $SSCred
+                $ConnCount = 0
+                Do {
+                    Try {
+                        $ConnCount++
+                        Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
+                        Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop
+                    } Catch {
+                        Start-Sleep 5
+                    }
+                } Until ($null -ne (Get-MgContext))
+            }
+
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
             # AAD App Permission - Perform remediation if specified
@@ -2152,13 +2170,18 @@ Function Install-SOAPrerequisites
             $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName 
 
             Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
+            If ($UseNewSDK -eq $true) {
+                $MgToken = $Token.AccessToken | ConvertTo-SecureString -AsPlainText -Force
+            } Else {
+                $MgToken = $Token.AccessToken
+            }
             switch ($O365EnvironmentName) {
-                "Commercial"   {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCC"     {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCCHigh" {Connect-MgGraph -AccessToken $Token.AccessToken -Environment "USGov" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovDoD"     {Connect-MgGraph -AccessToken $Token.AccessToken -Environment "USGovDoD" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "Germany"      {Connect-MgGraph -AccessToken $Token.AccessToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "China"        {Connect-MgGraph -AccessToken $Token.AccessToken -Environment "China" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "Commercial"   {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCC"     {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCCHigh" {Connect-MgGraph -AccessToken $MgToken -Environment "USGov" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovDoD"     {Connect-MgGraph -AccessToken $MgToken -Environment "USGovDoD" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "Germany"      {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "China"        {Connect-MgGraph -AccessToken $MgToken -Environment "China" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
             }
 
             If($ConnectError){
