@@ -102,6 +102,7 @@ The permission scope of this application is limited to the following:
 * **Directory.Read.All** (Retrieve sign-in activity for user and guest accounts. Both this scope and the previous scope are required in order to get sign-in activity.)
 * **Policy.Read.All** (Retrieve Azure AD authorization and conditional access policies.)
 * **SecurityIncident.Read.All** (Retrieve Defender security incidents.)
+* **OnPremDirectorySynchronization.Read.All** (Retrieve Azure AD directory synchronization settings.)
 #### Dynamics CRM API:
 * **user_impersonation** (Retrieve Dataverse settings.)
 
