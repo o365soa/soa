@@ -1667,7 +1667,7 @@ Function Test-SOAApplication
         $Secret,
         $TenantDomain,
         [Switch]$WriteHost,
-        [Switch]$LegacyTokens,
+        [Switch]$NewTokens,
         [string]$O365EnvironmentName="Commercial"
     )
 
@@ -1681,11 +1681,10 @@ Function Test-SOAApplication
     If($PermCheck -eq $True)
     {
         If($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
-        # Provide a fallback option for manually providing a token to the Graph SDK
-        If($LegacyTokens -or $UseNewSDK -eq $false){
-            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
-        } Else {
+        If ($NewTokens){
             $TokenCheck = Invoke-AppTokenRolesCheckV2 -O365EnvironmentName $O365EnvironmentName
+        } Else {
+            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
         }
     }
 
