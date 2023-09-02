@@ -2050,7 +2050,7 @@ Function Install-SOAPrerequisites
             "China"        {$cloud = 'China'}            
         }
         if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
-            Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process"
+            Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
         }
         
         Import-MSAL
@@ -2094,7 +2094,7 @@ Function Install-SOAPrerequisites
                 Try {
                     $ConnCount++
                     Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
-                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop
+                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop | Out-Null
                 } Catch {
                     Start-Sleep 5
                 }
