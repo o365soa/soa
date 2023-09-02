@@ -736,12 +736,7 @@ Function Get-ModuleStatus {
     }
 
     # Check version in PS Gallery
-    # Control whether 1.x or 2.x of Graph SDK modules are installed
-    If ($UseNewSDK -eq $False -and $ModuleName -Like "Microsoft.Graph.*") {
-        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.99)
-    } Else {
-        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
-    }
+    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
 
     If($PSGalleryModule.Count -eq 1) {
         [version]$GalleryVersion = $PSGalleryModule.Version
@@ -885,12 +880,7 @@ Function Install-ModuleFromGallery {
         $Scope = "CurrentUser"
     }
 
-    # Control whether 1.x or 2.x of Graph SDK modules are installed
-    If ($UseNewSDK -eq $False -and $Module -Like "Microsoft.Graph.*") {
-        Install-Module $Module -Force -Scope:$Scope -AllowClobber -MaximumVersion 1.99
-    } Else {
-        Install-Module $Module -Force -Scope:$Scope -AllowClobber
-    }
+    Install-Module $Module -Force -Scope:$Scope -AllowClobber
 
     If($Update) {
         # Remove old versions of the module
@@ -1549,14 +1539,6 @@ Function Get-RequiredAppPermissions {
         Type='Scope'
         Resource="00000007-0000-0000-c000-000000000000" # Dynamics 365
     }
-    If ($O365EnvironmentName -ne "USGovGCCHigh" -and $O365EnvironmentName -ne "USGovDoD"){
-        $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID="bb70e231-92dc-4729-aff5-697b3f04be95"
-            Name="OnPremDirectorySynchronization.Read.All"
-            Type='Role'
-            Resource="00000003-0000-0000-c000-000000000000" # Graph 
-        }
-    }
     Return $AppRoles
 }
 
@@ -1675,7 +1657,7 @@ Function Test-SOAApplication
         $Secret,
         $TenantDomain,
         [Switch]$WriteHost,
-        [Switch]$LegacyTokens,
+        [Switch]$NewTokens,
         [string]$O365EnvironmentName="Commercial"
     )
 
@@ -1689,11 +1671,10 @@ Function Test-SOAApplication
     If($PermCheck -eq $True)
     {
         If($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
-        # Provide a fallback option for manually providing a token to the Graph SDK
-        If($LegacyTokens -or $UseNewSDK -eq $false){
-            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
-        } Else {
+        If ($NewTokens){
             $TokenCheck = Invoke-AppTokenRolesCheckV2 -O365EnvironmentName $O365EnvironmentName
+        } Else {
+            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
         }
     }
 
@@ -1741,11 +1722,7 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='ModulesOnly')]
         [Switch]$ADModuleOnly,
     [Parameter(ParameterSetName='AzureADAppOnly')]
-        [Switch]$AzureADAppOnly,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='AzureADAppOnly')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [Switch]$UseNewSDK
+        [Switch]$AzureADAppOnly
     )
 
     <#
@@ -2109,21 +2086,19 @@ Function Install-SOAPrerequisites
             Start-Sleep 10
 
             # Reconnect with Application permissions
-            If ($UseNewSDK){
-                Disconnect-MgGraph | Out-Null
-                $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
-                $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($AzureADApp.AppId), $SSCred
-                $ConnCount = 0
-                Do {
-                    Try {
-                        $ConnCount++
-                        Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
-                        Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop | Out-Null
-                    } Catch {
-                        Start-Sleep 5
-                    }
-                } Until ($null -ne (Get-MgContext))
-            }
+            Disconnect-MgGraph | Out-Null
+            $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
+            $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($AzureADApp.AppId), $SSCred
+            $ConnCount = 0
+            Do {
+                Try {
+                    $ConnCount++
+                    Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
+                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop
+                } Catch {
+                    Start-Sleep 5
+                }
+            } Until ($null -ne (Get-MgContext))
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
@@ -2175,14 +2150,9 @@ Function Install-SOAPrerequisites
                 "China"        {$Resource = "https://microsoftgraph.chinacloudapi.cn"}
             }
 
-            $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName 
+            $MgToken = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName | ConvertTo-SecureString -AsPlainText -Force
 
             Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
-            If ($UseNewSDK -eq $true) {
-                $MgToken = $Token.AccessToken | ConvertTo-SecureString -AsPlainText -Force
-            } Else {
-                $MgToken = $Token.AccessToken
-            }
             switch ($O365EnvironmentName) {
                 "Commercial"   {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
                 "USGovGCC"     {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
