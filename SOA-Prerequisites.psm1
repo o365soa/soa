@@ -2094,7 +2094,7 @@ Function Install-SOAPrerequisites
                 Try {
                     $ConnCount++
                     Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
-                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop
+                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop | Out-Null
                 } Catch {
                     Start-Sleep 5
                 }
