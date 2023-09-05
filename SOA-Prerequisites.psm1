@@ -2150,7 +2150,7 @@ Function Install-SOAPrerequisites
                 "China"        {$Resource = "https://microsoftgraph.chinacloudapi.cn"}
             }
 
-            $MgToken = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName | ConvertTo-SecureString -AsPlainText -Force
+            $MgToken = (Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName).AccessToken | ConvertTo-SecureString -AsPlainText -Force
 
             Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
             switch ($O365EnvironmentName) {
