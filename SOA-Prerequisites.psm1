@@ -1539,6 +1539,14 @@ Function Get-RequiredAppPermissions {
         Type='Scope'
         Resource="00000007-0000-0000-c000-000000000000" # Dynamics 365
     }
+    If ($O365EnvironmentName -ne "USGovGCCHigh" -and $O365EnvironmentName -ne "USGovDoD"){
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="bb70e231-92dc-4729-aff5-697b3f04be95"
+            Name="OnPremDirectorySynchronization.Read.All"
+            Type='Role'
+            Resource="00000003-0000-0000-c000-000000000000" # Graph 
+        }
+    }
     Return $AppRoles
 }
 
