@@ -336,7 +336,7 @@ Function Invoke-GraphTest {
     }
 
     Return New-Object -TypeName PSObject -Property @{
-        Check="AAD App Graph Test"
+        Check="Entra App Graph Test"
         Pass=$Success
         Debug=$RunError
     }
@@ -355,7 +355,7 @@ Function Set-AzureADAppPermission {
         [string]$O365EnvironmentName
     )
 
-    Write-Host "$(Get-Date) Setting Azure AD App Permissions for Application"
+    Write-Host "$(Get-Date) Setting Microsoft Entra enterprise application permissions..."
     Write-Verbose "$(Get-Date) Set-AzureADAppPermissions App: $($App.Id) Cloud: $O365EnvironmentName"
 
     $RequiredResources = @()
@@ -432,15 +432,13 @@ Function Set-AzureADAppPermission {
 Function Invoke-AppPermissionCheck 
 {
     <#
-        Check the permissions are set correctly on the Azure AD application
+        Check the permissions are set correctly on the Entra application
     #>
     Param(
         $App,
         [Switch]$NewPermission
     )
 
-    $Provisioned = $True
-    
     $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
@@ -461,8 +459,8 @@ Function Invoke-AppPermissionCheck
 
     While($Counter -lt $MaxTime)
     {
-
-        # Refresh roles from AAD
+        $Provisioned = $True
+        # Refresh roles from Entra
         # Set App ID based on property being from Get-MgApplication or Get-AzureADApplication
         if ($App.ObjectId) {$appId = $App.ObjectId} else {$appId = $App.Id}
         #$App = Get-MgApplication -ApplicationId $appId
@@ -491,7 +489,7 @@ Function Invoke-AppPermissionCheck
         {
             Start-Sleep $SleepTime
             $Counter += $SleepTime
-            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck loop - waiting for permissions on Azure AD Application - Counter $Counter maxTime $MaxTime Missing $($Missing -join ' ')"
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck loop - waiting for permissions on Entra application - Counter $Counter maxTime $MaxTime Missing $($Missing -join ' ')"
         }
 
     }
@@ -671,14 +669,14 @@ Function Invoke-Consent {
 Function Install-AzureADApp {
     <#
 
-        Installs the Azure AD Application used for accessing Graph and Security APIs
+        Installs the Entra enterprise application used for accessing Graph and Dynamics
     
     #>
     Param(
         [string]$O365EnvironmentName
     )
 
-    # Create the Azure AD Application
+    # Create the Entra application
     Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
     #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
     $AzureADApp = New-MgApplication -DisplayName "Office 365 Security Optimization Assessment" `
@@ -1146,7 +1144,7 @@ Function Test-Connections {
     $Connections = @()
 
     Write-Host "$(Get-Date) Testing connections..."
-    #$userUPN = Read-Host -Prompt "What is the UPN of the admin account that you will be signing in with for connection validation and with sufficient privileges to register the Azure AD application"
+    #$userUPN = Read-Host -Prompt "What is the UPN of the admin account that you will be signing in with for connection validation and with sufficient privileges to register the Microsoft Entra enterprise application"
 
     <#
         
@@ -1159,7 +1157,7 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 1..."
+        Write-Host "$(Get-Date) Connecting to Microsft Entra with Azure AD PowerShell 1..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "USGovGCC"     {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
@@ -1198,7 +1196,7 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Azure AD PowerShell 2..."
+        Write-Host "$(Get-Date) Connecting to Microsoft Entra with Azure AD PowerShell 2..."
         switch ($O365EnvironmentName) {
             "Commercial"   {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCC"     {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1472,7 +1470,7 @@ Function Get-RequiredAppPermissions {
     )
 
     <#
-        This function returns the required application permissions for the AAD application
+        This function returns the required application permissions for the Entra application
 
         Required Application Permissions
 
@@ -1632,13 +1630,13 @@ function Get-SOAAzureADApp {
         [string]$O365EnvironmentName
     )
 
-    # Determine if Azure AD Application Exists
+    # Determine if Microsoft Entra application exists
     #$AzureADApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
     $AzureADApp = Get-MgApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
 
     if (!$AzureADApp) {
         if ($DoNotRemediate -eq $false) {
-            Write-Host "$(Get-Date) Installing Azure AD Application..."
+            Write-Host "$(Get-Date) Creating Microsoft Entra enterprise application..."
             $AzureADApp = Install-AzureADApp -O365EnvironmentName $O365EnvironmentName
             Write-Verbose "$(Get-Date) Get-SOAAzureADApp App $($AzureADApp.Id)"
         }
@@ -1649,7 +1647,7 @@ function Get-SOAAzureADApp {
         if ($AzureADApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
-                Write-Verbose "$(Get-Date) Setting Azure AD application public client redirect URI..."
+                Write-Verbose "$(Get-Date) Setting Microsoft Entra application public client redirect URI..."
                 Update-MgApplication -ApplicationId $AzureADApp.Id -PublicClient @{'RedirectUris'=$pcRUrl}
                 # Get app again so public client is set for checking DoNotRemediate in calling function
                 $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
@@ -1806,7 +1804,7 @@ Function Install-SOAPrerequisites
     Start-Transcript "$SOADirectory\$TranscriptName"
 
     if ($DoNotRemediate){
-        Write-Host "$(Get-Date) The DoNotRemediate switch was used.  Any missing or outdated modules, as well as the registration and/or configuration of the Azure AD application will not be performed." -ForegroundColor Yellow
+        Write-Host "$(Get-Date) The DoNotRemediate switch was used.  Any missing or outdated modules, as well as the registration and/or configuration of the Microsoft Entra enterprise application will not be performed." -ForegroundColor Yellow
     }
 
     if ($NoVersionCheck) {
@@ -1894,7 +1892,7 @@ Function Install-SOAPrerequisites
             Write-Host "- Install the latest version of PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
         }
         if ($AzureADAppCheck) {
-            Write-Host "- Register an Azure AD application in your tenant:" -ForegroundColor Green
+            Write-Host "- Create a Microsoft Entra enterprise application in your tenant:" -ForegroundColor Green
             Write-Host "   -- The application name is 'Office 365 Security Optimization Assessment'" -ForegroundColor Green
             Write-Host "   -- The application will not be visible to end users" -ForegroundColor Green
             Write-Host "   -- The application secret (password) will not be stored, is randomly generated, and is removed when the prerequisites installation is complete." -ForegroundColor Green
@@ -2041,7 +2039,7 @@ Function Install-SOAPrerequisites
 
     If($AzureADAppCheck -eq $True) {
 
-        # When AzureADAppCheck is run by itself, this script will not be connected to Azure AD
+        # When AzureADAppCheck is run by itself, this script will not be connected to Microsoft Entra
         If((Get-AzureADConnected) -eq $False) {
             switch ($O365EnvironmentName) {
                 "Commercial"   {Connect-AzureAD | Out-Null;break}
@@ -2063,32 +2061,54 @@ Function Install-SOAPrerequisites
             "China"        {$cloud = 'China'}            
         }
         if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
-            Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
+            Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
+            # Sometimes the connection attempt returns a deserialization error (for an as yet unknown reason)
+            # Connecting again typically is successful, so just retry
+            $connCount = 0
+            $connLimit = 5
+            do {
+                try {
+                    $connCount++
+                    Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
+                    Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                }
+                catch {
+                    Write-Verbose $_
+                    Start-Sleep 1
+                }
+            }
+            until ($null -ne (Get-MgContext) -or $connCount -eq $connLimit)
+            if ($null -eq (Get-MgContext)) {
+                Write-Error -Message "Unable to connect to Graph. Skipping Microsoft Entra application check."
+            }
         }
         
-        Import-MSAL
+        if (Get-MgContext) {
 
-        Write-Host "$(Get-Date) Checking Azure AD Application..."
+            Import-MSAL
 
-        # Get the default MSOL domain
-        $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
+            Write-Host "$(Get-Date) Checking Microsoft Entra enterprise application..."
 
-        # Determine if Azure AD Application exists (and has public client redirect URI set), create if doesnt
-        $AzureADApp = Get-SOAAzureADApp -O365EnvironmentName $O365EnvironmentName
+            # Get the default MSOL domain
+            $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
+
+            # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesnt
+            $AzureADApp = Get-SOAAzureADApp -O365EnvironmentName $O365EnvironmentName
+        }
 
         If($AzureADApp) {
             # Check if public client redirect URI not set for existing app because DoNotRemediate is True
             if ($AzureADApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -and $DoNotRemediate) {
-                # Fail the AAD app check
+                # Fail the Entra app check
                 $CheckResults += New-Object -Type PSObject -Property @{
-                    Check="AAD Application"
+                    Check="Entra Application"
                     Pass=$false
                 }
             }
             else {
-                # Pass the AAD app check
+                # Pass the Entra app check
                 $CheckResults += New-Object -Type PSObject -Property @{
-                    Check="AAD Application"
+                    Check="Entra Application"
                     Pass=$true
                 }
             }
@@ -2103,6 +2123,7 @@ Function Install-SOAPrerequisites
             $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
             $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($AzureADApp.AppId), $SSCred
             $ConnCount = 0
+            Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
             Do {
                 Try {
                     $ConnCount++
@@ -2115,13 +2136,26 @@ Function Install-SOAPrerequisites
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
-            # AAD App Permission - Perform remediation if specified
+            # Entra App Permission - Perform remediation if specified
             If($AppTest.Permissions -eq $False -and $DoNotRemediate -eq $false)
             {
-                # Set up the correct AAD App Permissions
+                # Set up the correct Entra App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
+                Write-Host "$(Get-Date) Reconnecting to Graph with delegated authentication..."
+                Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
                 If((Set-AzureADAppPermission -App $AzureADApp -PerformConsent:$True -O365EnvironmentName $O365EnvironmentName) -eq $True) {
                     # Perform check again after setting permissions
+                    $ConnCount = 0
+                    Write-Host "$(Get-Date) Reconnecting to Graph with application authentication..."
+                    Do {
+                        Try {
+                            $ConnCount++
+                            Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
+                            Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop | Out-Null
+                        } Catch {
+                            Start-Sleep 5
+                        }
+                    } Until ($null -ne (Get-MgContext))
                     $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 }
             }
@@ -2140,11 +2174,11 @@ Function Install-SOAPrerequisites
 
             # Add final result to checkresults object
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="AAD App Permissions"
+                Check="Entra App Permissions"
                 Pass=$AppTest.Permissions
             }
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="AAD App Token"
+                Check="Entra App Token"
                 Pass=$AppTest.Token
             }
 
@@ -2204,9 +2238,9 @@ Function Install-SOAPrerequisites
         } 
         Else 
         {
-            # AAD application does not exist
+            # Entra application does not exist
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="AAD Application"
+                Check="Entra Application"
                 Pass=$False
             }
         }
@@ -2276,7 +2310,7 @@ Function Install-SOAPrerequisites
 
     If($AzureADAppCheck -eq $True) {
 
-        Write-Host "$(Get-Date) Azure AD app checks" -ForegroundColor Green
+        Write-Host "$(Get-Date) Microsoft Entra enterprise application checks" -ForegroundColor Green
 
     }
 
