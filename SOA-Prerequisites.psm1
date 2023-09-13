@@ -202,21 +202,20 @@ function Remove-SOAAppSecretv2 {
 Function Import-MSAL {
     <#
     
-        Finds a suitable MSAL library from Exchange Online and uses that
+        Finds a suitable MSAL library from Graph SDK and uses that
         This prevents us having to ship the .dll's ourself.
 
     #>
 
-    # Add support for the .Net Core version of the library. Variable doesn't exist in PowerShell v4 and below, 
-    # so if it doesn't exist it is assumed that 'Desktop' edition is used
+    # Add support for the .Net Core version of the library.
     If ($PSEdition -eq 'Core'){
         $Folder = "netCore"
     } Else {
         $Folder = "NetFramework"
     }
 
-    $ExoModule = Get-Module -Name "ExchangeOnlineManagement" -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
-    $MSAL = Join-Path $ExoModule.ModuleBase "$($Folder)\Microsoft.Identity.Client.dll"
+    $MgAuthModule = Get-Module -Name "Microsoft.Graph.Authentication" -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
+    $MSAL = Join-Path $MgAuthModule.ModuleBase "$($Folder)\Microsoft.Identity.Client.dll"
 
     # Load the MSAL library
     Write-Verbose "$(Get-Date) Loading module from $MSAL"
@@ -2062,8 +2061,7 @@ Function Install-SOAPrerequisites
         }
         if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
-            # Sometimes the connection attempt returns a deserialization error (for an as yet unknown reason)
-            # Connecting again typically is successful, so just retry
+            if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
             $connLimit = 5
             do {
