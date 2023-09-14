@@ -2176,37 +2176,18 @@ Function Install-SOAPrerequisites
                 Pass=$AppTest.Permissions
             }
             $CheckResults += New-Object -Type PSObject -Property @{
-                Check="Entra App Token"
+                Check="Entra App Role Consent"
                 Pass=$AppTest.Token
             }
 
-            # Perform Graph Check
+            # Perform Graph Check for calls with self-managed token
             Write-Host "$(Get-Date) Performing Graph Test..."
             $CheckResults += Invoke-GraphTest -AzureADApp $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
 
-
-            # Check that the Graph SDK modules can connect
-            switch ($O365EnvironmentName) {
-                "Commercial"   {$Resource = "https://graph.microsoft.com";break}
-                "USGovGCC"     {$Resource = "https://graph.microsoft.com";break}
-                "USGovGCCHigh" {$Resource = "https://graph.microsoft.us";break}
-                "USGovDoD"     {$Resource = "https://dod-graph.microsoft.us";break}
-                "Germany"      {$Resource = "https://graph.microsoft.com";break}
-                "China"        {$Resource = "https://microsoftgraph.chinacloudapi.cn"}
-            }
-
-            $MgToken = (Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $clientsecret -Resource $Resource -O365EnvironmentName $O365EnvironmentName).AccessToken | ConvertTo-SecureString -AsPlainText -Force
-
-            Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
-            switch ($O365EnvironmentName) {
-                "Commercial"   {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCC"     {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCCHigh" {Connect-MgGraph -AccessToken $MgToken -Environment "USGov" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovDoD"     {Connect-MgGraph -AccessToken $MgToken -Environment "USGovDoD" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "Germany"      {Connect-MgGraph -AccessToken $MgToken -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "China"        {Connect-MgGraph -AccessToken $MgToken -Environment "China" -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-            }
-
+            # Perform Graph check using credentials on the App
+            if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
+            Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null
+            
             If($ConnectError){
                 $CheckResults += New-Object -Type PSObject -Property @{
                     Check="Graph SDK Connection"
