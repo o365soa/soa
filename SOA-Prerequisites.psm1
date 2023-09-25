@@ -209,13 +209,13 @@ Function Import-MSAL {
 
     # Add support for the .Net Core version of the library.
     If ($PSEdition -eq 'Core'){
-        $Folder = "netCore"
+        $Folder = "Core"
     } Else {
-        $Folder = "NetFramework"
+        $Folder = "Desktop"
     }
 
     $MgAuthModule = Get-Module -Name "Microsoft.Graph.Authentication" -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
-    $MSAL = Join-Path $MgAuthModule.ModuleBase "$($Folder)\Microsoft.Identity.Client.dll"
+    $MSAL = Join-Path $MgAuthModule.ModuleBase "Dependencies\$($Folder)\Microsoft.Identity.Client.dll"
 
     # Load the MSAL library
     Write-Verbose "$(Get-Date) Loading module from $MSAL"
