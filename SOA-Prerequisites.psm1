@@ -1132,6 +1132,17 @@ function Import-PSModule {
         if ($loadError) {
             Write-Error -Message "Error loading module $ModuleName."
         }
+
+        # Check that Graph modules have dependant module (Authentication) loaded with the same version and throw an error if they are not the same version. Only check for non-Auth modules since they will have a RequiredModules statement in the manifest to load the Auth module
+        if ($ModuleName -like 'Microsoft.Graph.*' -and $ModuleName -ne 'Microsoft.Graph.Authentication'){            
+            $GraphModule = Get-Module -Name $ModuleName | Sort-Object Version -Descending
+            $AuthModule = Get-Module -Name 'Microsoft.Graph.Authentication' | Sort-Object Version -Descending
+
+            If (($GraphModule).Version -ne ($AuthModule).Version) {
+                Write-Error "The version for loaded modules $ModuleName ($($GraphModule.Version.ToString())) and Microsoft.Graph.Authentication ($($AuthModule.Version.ToString())) are not matching and will cause calls to Microsoft Graph to fail. Run `"Install-SOAPrerequisites -ModulesOnly`" to ensure the latest version of all required Microsoft.Graph modules is installed. If the latest version is installed, open a new PowerShell window."
+                Exit-Script
+            }
+        }
     }
 }
 Function Test-Connections {
@@ -2082,9 +2093,6 @@ Function Install-SOAPrerequisites
         }
         
         if (Get-MgContext) {
-
-            Import-MSAL
-
             Write-Host "$(Get-Date) Checking Microsoft Entra enterprise application..."
 
             # Get the default MSOL domain
