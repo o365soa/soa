@@ -641,8 +641,7 @@ Function Invoke-Consent {
         "China"        {$AuthLocBase = "https://login.partner.microsoftonline.cn"}
     }
     # Need to use the Application ID, not Object ID
-    $Location = "$AuthLocBase/common/adminconsent?client_id=$($App.AppId)&state=12345&redirect_uri=https://soaconsentreturn.azurewebsites.net"
-    
+    $Location = "$AuthLocBase/common/adminconsent?client_id=$($App.AppId)&state=12345&redirect_uri=https://o365soa.github.io/soa/"
     Write-Important
     Write-Host "In 10 seconds, a page in the default browser will load and ask you to grant consent to Security Optimization Assessment."
     write-Host "You must sign in with an account that has Global Administrator or Privileged Role Administrator role."
@@ -677,9 +676,9 @@ Function Install-AzureADApp {
 
     # Create the Entra application
     Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
-    #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")
+    #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa")
     $AzureADApp = New-MgApplication -DisplayName "Office 365 Security Optimization Assessment" `
-        -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://soaconsentreturn.azurewebsites.net")} `
+        -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa")} `
         -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
         -SignInAudience AzureADMyOrg
 
