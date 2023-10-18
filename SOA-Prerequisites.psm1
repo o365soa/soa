@@ -1673,6 +1673,15 @@ function Get-SOAAzureADApp {
                 $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
             }
         }
+        # Check if correct web redirect URIs are set
+        $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
+        if (Compare-Object -ReferenceObject $AzureADApp.Web.RedirectUris -DifferenceObject $webRUri) {
+            if ($DoNotRemediate -eq $false) {
+                Write-Verbose "$(Get-Date) Setting Microsoft Entra application web redirect URIs..."
+                Update-MgApplication -ApplicationId $AzureADApp.Id -Web @{'RedirectUris'=$webRUri}
+                $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
+            }
+        }
     }
 
     Return $AzureADApp
@@ -2113,8 +2122,9 @@ Function Install-SOAPrerequisites
         }
 
         If($AzureADApp) {
-            # Check if public client redirect URI not set for existing app because DoNotRemediate is True
-            if ($AzureADApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -and $DoNotRemediate) {
+            # Check if redirect URIs not set for existing app because DoNotRemediate is True
+            $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
+            if (($AzureADApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $AzureADApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
                 # Fail the Entra app check
                 $CheckResults += New-Object -Type PSObject -Property @{
                     Check="Entra Application"
