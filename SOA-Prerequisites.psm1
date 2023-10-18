@@ -731,8 +731,13 @@ Function Get-ModuleStatus {
         $Installed = $True
     }
 
-    # Check version in PS Gallery
-    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    # Check version in PS Gallery, limit MSOnline version because of compatibility bug with Graph SDK
+    if ($ModuleName -eq 'MSOnline') {
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.1.183.66)
+    }
+    else {
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    }
 
     If($PSGalleryModule.Count -eq 1) {
         [version]$GalleryVersion = $PSGalleryModule.Version
@@ -876,7 +881,13 @@ Function Install-ModuleFromGallery {
         $Scope = "CurrentUser"
     }
 
-    Install-Module $Module -Force -Scope:$Scope -AllowClobber
+    # Limit MSOnline version because of compatibility issue with Graph SDK
+    if ($Module -eq 'MSOnline') {
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber -MaximumVersion 1.1.183.66
+    } 
+    else {
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber
+    }
 
     If($Update) {
         # Remove old versions of the module
