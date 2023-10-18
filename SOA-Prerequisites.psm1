@@ -676,9 +676,9 @@ Function Install-AzureADApp {
 
     # Create the Entra application
     Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
-    #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa")
+    #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
     $AzureADApp = New-MgApplication -DisplayName "Office 365 Security Optimization Assessment" `
-        -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa")} `
+        -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")} `
         -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
         -SignInAudience AzureADMyOrg
 
