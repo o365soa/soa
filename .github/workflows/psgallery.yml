@@ -1,0 +1,29 @@
+name: Publish PowerShell Module
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish-to-gallery:
+    runs-on: windows-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        ref: master
+    - name: Build and publish
+      env:
+        NUGET_KEY: ${{ secrets.NUGET_KEY }}
+        MODULE_VER: ${{ github.ref_name }}
+      shell: pwsh
+      run: |
+        .\.github\build\build.ps1
+        Update-ModuleManifest -Path ".\SOA\SOA.psd1" -ModuleVersion ($env:MODULE_VER).TrimStart("v")
+        Publish-Module -Path ".\SOA" -NuGetApiKey $env:NUGET_KEY -Verbose
+    - name: Push commit
+      run: |
+        git config --global user.name 'github-actions'
+        git config --global user.email 'github-actions@github.com'
+        git add --all .
+        git commit -am "Bump version"
+        git push
