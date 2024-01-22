@@ -27,7 +27,7 @@ Author = 'Microsoft'
 CompanyName = 'Microsoft'
 
 # Copyright statement for this module
-Copyright = '(c) 2023 Microsoft. All rights reserved.'
+Copyright = '(c) 2024 Microsoft. All rights reserved.'
 
 # Description of the functionality provided by this module
 Description = 'Scripts required for the SOA Delivery'
