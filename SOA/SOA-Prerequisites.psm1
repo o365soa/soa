@@ -4,11 +4,11 @@
 <#
 
     .SYNOPSIS
-        Prerequisite validation/installation module for Office 365: Security Optimization Assessment
+        Prerequisite validation/installation module for Microsoft Security Optimization Assessment
 
     .DESCRIPTION
         Contains installation cmdlet which must be run in advance of a Microsoft
-        proactive offering of the Office 365 Security Optimization Assessment
+        proactive offering of the Security Optimization Assessment
 
         The output of the script (JSON file) should be sent to the engineer who will be performing
         the assessment.
@@ -675,9 +675,9 @@ Function Install-AzureADApp {
     )
 
     # Create the Entra application
-    Write-Verbose "$(Get-Date) Install-AzureADPApp Installing App"
-    #$AzureADApp = New-AzureADApplication -DisplayName "Office 365 Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-    $AzureADApp = New-MgApplication -DisplayName "Office 365 Security Optimization Assessment" `
+    Write-Verbose "$(Get-Date) Install-AzureADApp Installing App"
+    #$AzureADApp = New-AzureADApplication -DisplayName "Microsoft Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
+    $AzureADApp = New-MgApplication -DisplayName "Microsoft Security Optimization Assessment" `
         -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")} `
         -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
         -SignInAudience AzureADMyOrg
@@ -1007,7 +1007,7 @@ Function Invoke-ModuleFix {
     # Missing gallery modules
     ForEach($MissingGalleryModule in $MissingGalleryModules) {
         Write-Host "$(Get-Date) Installing $($MissingGalleryModule.Module)"
-        Install-ModuleFromGallery -Module $($MissingGalleryModule.Module)          
+        Install-ModuleFromGallery -Module $($MissingGalleryModule.Module)
     }
 
     # Dupe modules
@@ -1570,6 +1570,13 @@ Function Get-RequiredAppPermissions {
             Resource="00000003-0000-0000-c000-000000000000" # Graph 
         }
     }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="93489bf5-0fbc-4f2d-b901-33f2fe08ff05"
+        Name="AdvancedQuery.Read.All"
+        Type='Role'
+        Resource="fc780465-2017-40d4-a0c5-307022471b92" # WindowsDefenderATP
+    }
+
     Return $AppRoles
 }
 
@@ -1651,8 +1658,8 @@ function Get-SOAAzureADApp {
     )
 
     # Determine if Microsoft Entra application exists
-    #$AzureADApp = Get-AzureADApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.ReplyUrls -Contains "https://security.optimization.assessment.local"}
-    $AzureADApp = Get-MgApplication -Filter "displayName eq 'Office 365 Security Optimization Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
+    #$AzureADApp = Get-MgApplication -Filter "displayName eq 'Microsoft Security Optimization Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
+    $AzureADApp = Get-MgApplication -Filter "web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')" -ConsistencyLevel Eventual -CountVariable CountVar
 
     if (!$AzureADApp) {
         if ($DoNotRemediate -eq $false) {
@@ -1662,6 +1669,12 @@ function Get-SOAAzureADApp {
         }
     }
     else {
+        # Check whether the application name should be updated
+        if ($AzureADApp.DisplayName -eq 'Office 365 Security Optimization Assessment') {
+            Write-Verbose "$(Get-Date) Renaming the display name of the Microsoft Entra application..."
+            Update-MgApplication -ApplicationId $AzureADApp.Id -DisplayName 'Microsoft Security Optimization Assessment'
+        }
+
         # Check if public client URI is set
         $pcRUrl = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
         if ($AzureADApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
@@ -1907,7 +1920,7 @@ Function Install-SOAPrerequisites
     #>
     Write-Host ""
     Write-Host "This scipt is used to install and validate the prerequisites for running the data collection"
-    Write-Host "for the Office 365 Security Optimisation Assessment, a Microsoft Services offering."
+    Write-Host "for the Microsoft Security Optimization Assessment, a Microsoft Services offering."
     Write-Host "At the conclusion of this script running successfully, a file named SOA-PreCheck.json will be created."
     Write-Host "This file should be sent to the engineer who will be delivering the assessment."
     Write-Host ""
@@ -1922,7 +1935,7 @@ Function Install-SOAPrerequisites
         }
         if ($AzureADAppCheck) {
             Write-Host "- Create a Microsoft Entra enterprise application in your tenant:" -ForegroundColor Green
-            Write-Host "   -- The application name is 'Office 365 Security Optimization Assessment'" -ForegroundColor Green
+            Write-Host "   -- The application name is 'Microsoft Security Optimization Assessment'" -ForegroundColor Green
             Write-Host "   -- The application will not be visible to end users" -ForegroundColor Green
             Write-Host "   -- The application secret (password) will not be stored, is randomly generated, and is removed when the prerequisites installation is complete." -ForegroundColor Green
             Write-Host "      (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
@@ -2087,7 +2100,7 @@ Function Install-SOAPrerequisites
             "USGovGCCHigh" {$cloud = 'USGov'}
             "USGovDoD"     {$cloud = 'USGovDoD'}
             "Germany"      {$cloud = 'Germany'}
-            "China"        {$cloud = 'China'}            
+            "China"        {$cloud = 'China'}
         }
         if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
