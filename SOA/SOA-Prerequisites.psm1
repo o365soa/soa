@@ -4,18 +4,21 @@
 <#
 
     .SYNOPSIS
-        Prerequisite validation/installation module for Microsoft Security Optimization Assessment
+        Prerequisite validation/installation module for Microsoft Security Assessments
 
     .DESCRIPTION
-        Contains installation cmdlet which must be run in advance of a Microsoft
-        proactive offering of the Security Optimization Assessment
+        Contains installation cmdlet which must be run prior to a Microsoft
+        proactive offering for any of the following security assessments:
+        - Office 365 Security Optimization Assessment
+        - Microsoft 365 Foundations: Workload Security Assessment
+        - Security Optimization Assessment for Microsoft Defender
 
         The output of the script (JSON file) should be sent to the engineer who will be performing
         the assessment.
 
         ############################################################################
-        # This sample script is not supported under any Microsoft standard support program or service. 
-        # This sample script is provided AS IS without warranty of any kind. 
+        # This script is not supported under any Microsoft standard support program or service. 
+        # This script is provided AS IS without warranty of any kind. 
         # Microsoft further disclaims all implied warranties including, without limitation, any implied 
         # warranties of merchantability or of fitness for a particular purpose. The entire risk arising 
         # out of the use or performance of the sample script and documentation remains with you. In no
@@ -677,7 +680,7 @@ Function Install-AzureADApp {
     # Create the Entra application
     Write-Verbose "$(Get-Date) Install-AzureADApp Installing App"
     #$AzureADApp = New-AzureADApplication -DisplayName "Microsoft Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-    $AzureADApp = New-MgApplication -DisplayName "Microsoft Security Optimization Assessment" `
+    $AzureADApp = New-MgApplication -DisplayName "Microsoft Security Assessment" `
         -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")} `
         -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
         -SignInAudience AzureADMyOrg
@@ -1658,7 +1661,7 @@ function Get-SOAAzureADApp {
     )
 
     # Determine if Microsoft Entra application exists
-    #$AzureADApp = Get-MgApplication -Filter "displayName eq 'Microsoft Security Optimization Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
+    #$AzureADApp = Get-MgApplication -Filter "displayName eq 'Microsoft Security Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
     $AzureADApp = Get-MgApplication -Filter "web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')" -ConsistencyLevel Eventual -CountVariable CountVar
 
     if (!$AzureADApp) {
@@ -1672,7 +1675,7 @@ function Get-SOAAzureADApp {
         # Check whether the application name should be updated
         if ($AzureADApp.DisplayName -eq 'Office 365 Security Optimization Assessment') {
             Write-Verbose "$(Get-Date) Renaming the display name of the Microsoft Entra application..."
-            Update-MgApplication -ApplicationId $AzureADApp.Id -DisplayName 'Microsoft Security Optimization Assessment'
+            Update-MgApplication -ApplicationId $AzureADApp.Id -DisplayName 'Microsoft Security Assessment'
         }
 
         # Check if public client URI is set
@@ -1920,7 +1923,7 @@ Function Install-SOAPrerequisites
     #>
     Write-Host ""
     Write-Host "This scipt is used to install and validate the prerequisites for running the data collection"
-    Write-Host "for the Microsoft Security Optimization Assessment, a Microsoft Services offering."
+    Write-Host "for one of the Microsoft security assessments offered via Microsoft Services."
     Write-Host "At the conclusion of this script running successfully, a file named SOA-PreCheck.json will be created."
     Write-Host "This file should be sent to the engineer who will be delivering the assessment."
     Write-Host ""
@@ -1935,7 +1938,7 @@ Function Install-SOAPrerequisites
         }
         if ($AzureADAppCheck) {
             Write-Host "- Create a Microsoft Entra enterprise application in your tenant:" -ForegroundColor Green
-            Write-Host "   -- The application name is 'Microsoft Security Optimization Assessment'" -ForegroundColor Green
+            Write-Host "   -- The application name is 'Microsoft Security Assessment'" -ForegroundColor Green
             Write-Host "   -- The application will not be visible to end users" -ForegroundColor Green
             Write-Host "   -- The application secret (password) will not be stored, is randomly generated, and is removed when the prerequisites installation is complete." -ForegroundColor Green
             Write-Host "      (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
