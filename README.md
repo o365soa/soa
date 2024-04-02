@@ -108,7 +108,6 @@ The permission scope of this application is limited to the following:
 * **Policy.Read.All** (Retrieve Microsoft Entra authorization and conditional access policies.)
 * **SecurityIncident.Read.All** (Retrieve Defender security incidents.)
 * **OnPremDirectorySynchronization.Read.All** (Retrieve Microsoft Entra directory synchronization settings.)
-* **AdvancedQuery.Read.All** (Retrieve Microsoft Defender for Endpoint health data. (_XDR only_))
 #### Dynamics CRM API:
 * **user_impersonation** (Retrieve Dataverse settings.)
 #### Windows Defender ATP
