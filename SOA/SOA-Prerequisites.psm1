@@ -361,7 +361,7 @@ Function Set-AzureADAppPermission {
     $PermissionSet = $False
     $ConsentPerformed = $False
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
 
     <#
     
@@ -438,7 +438,7 @@ Function Invoke-AppPermissionCheck
         [Switch]$NewPermission
     )
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
     If($NewPermission)
@@ -531,7 +531,7 @@ Function Invoke-AppTokenRolesCheck {
         "China"        {$GraphResource = "https://microsoftgraph.chinacloudapi.cn/"}
     }
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
 
     # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
     $MaxTime = 300
@@ -600,7 +600,7 @@ Function Invoke-AppTokenRolesCheckV2 {
         [string]$O365EnvironmentName
     )
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName
+    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
 
     $ActiveScopes = (Get-MgContext).Scopes
     $MissingRoles = @()
@@ -1486,7 +1486,8 @@ Function Test-Connections {
 Function Get-RequiredAppPermissions {
     param
     (
-    [string]$O365EnvironmentName="Commercial"
+    [string]$O365EnvironmentName="Commercial",
+    $HasATPP2License
     )
 
     <#
@@ -1570,11 +1571,23 @@ Function Get-RequiredAppPermissions {
             Resource="00000003-0000-0000-c000-000000000000" # Graph 
         }
     }
-    $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="93489bf5-0fbc-4f2d-b901-33f2fe08ff05"
-        Name="AdvancedQuery.Read.All"
-        Type='Role'
-        Resource="fc780465-2017-40d4-a0c5-307022471b92" # WindowsDefenderATP
+
+    $MDEAvailable = $false
+    switch ($O365EnvironmentName) {
+        "Commercial"   {$MDEAvailable=$true;break}
+        "USGovGCCHigh" {$MDEAvailable=$true;break}
+        "USGovDoD"     {$MDEAvailable=$true;break}
+        "Germany"      {$MDEAvailable=$false;break}
+        "China"        {$MDEAvailable=$false}
+    }
+    if ($HasATPP2License -eq $true -and $MDEAvailable -eq $true) {
+        Write-Verbose "Adding Defender for Endpoint role to App"
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="93489bf5-0fbc-4f2d-b901-33f2fe08ff05"
+            Name="AdvancedQuery.Read.All"
+            Type='Role'
+            Resource="fc780465-2017-40d4-a0c5-307022471b92" # WindowsDefenderATP
+        }
     }
 
     Return $AppRoles
@@ -2172,6 +2185,9 @@ Function Install-SOAPrerequisites
                     Start-Sleep 5
                 }
             } Until ($null -ne (Get-MgContext))
+
+            $ATPLicensed = Get-LicenseStatus -LicenseType ATPP2
+            Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
 
             $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
                 
