@@ -111,7 +111,7 @@ The permission scope of this application is limited to the following:
 #### Dynamics CRM API:
 * **user_impersonation** (Retrieve Dataverse settings.)
 #### Windows Defender ATP
-* **AdvancedQuery.Read.All** (For organizations with Microsoft Defender for Identity, retrieve health alerts.)
+* **AdvancedQuery.Read.All** (For organizations with Microsoft Defender for Endpoint, retrieve health alerts.)
 
 ### Enterprise application security
 
