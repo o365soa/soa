@@ -1,12 +1,17 @@
-# Office 365 SOA Prerequisites
+# Microsoft Security Assessment Prerequisites
 
 ## Introduction
 
-The Office 365 Security Optimisation Assessment has several prerequisites that need to be installed or configured. The tool runs in PowerShell, and connects to various workloads in Office 365.
+The following Microsoft security assessments have several prerequisites that need to be installed and configured:
+- Office 365 Security Optimization Assessment
+- Microsoft 365 Foundations - Workload Security Assessment
+- Security Optimization Assessment for Microsoft Defender
+
+The preqrequisites installation script is included in a PowerShell module named SOA.
 
 ## Prerequisites Breakdown
 
-The latest version of the following modules are installed:
+The latest version of the following PowerShell modules are installed:
 * Azure AD MSOnline (v1)
 * Azure AD (v2) Preview
 * Exchange Online Management
@@ -105,6 +110,8 @@ The permission scope of this application is limited to the following:
 * **OnPremDirectorySynchronization.Read.All** (Retrieve Microsoft Entra directory synchronization settings.)
 #### Dynamics CRM API:
 * **user_impersonation** (Retrieve Dataverse settings.)
+#### Windows Defender ATP
+* **AdvancedQuery.Read.All** (For organizations with Microsoft Defender for Endpoint, retrieve health alerts.)
 
 ### Enterprise application security
 
