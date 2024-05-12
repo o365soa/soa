@@ -13,7 +13,6 @@ The preqrequisites installation script is included in a PowerShell module named 
 
 The latest version of the following PowerShell modules are installed:
 * Azure AD MSOnline (v1)
-* Azure AD (v2) Preview
 * Exchange Online Management
 * SharePoint Online
 * Microsoft Teams
@@ -21,11 +20,12 @@ The latest version of the following PowerShell modules are installed:
 * From the Microsoft Graph PowerShell SDK: 
    * Microsoft.Graph.Authentication
    * Microsoft.Graph.Applications
+   * Microsoft.Graph.Identity.DirectoryManagement (used only during the prerequisites installation)
 * Active Directory
 
 Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
 
-A Microsoft Entra enterprise application is also registered in your tenant. Details of this are provided below.
+An application, named "Microsoft Security Assessment", is also registered (created) in your tenant. Details are provided below.
 
 ## Prerequisites Script
 
@@ -47,15 +47,14 @@ In order to install the SOA module and run the prerequisites script, you must ha
       
 ### Permissions
 * Local admin (running PowerShell as an adminisrator) is not required except if the Active Directory module needs to be installed (see [below](#active-directory-module)).
-* For the connections to each workload, the account used to sign in does not require an admin role except for the connection to Microsoft Entra using the Azure AD v2 Preview module, as indicated:
-   * To be able to discover the URL to use to connect to SharePoint Online, the account used to connect to Microsoft Entra needs to have the Directory Readers role (or "higher").
-   * To be able to create and test the enterprise application:
-      * For the application to be created, any user in the tenant can be used, by default. If this setting has been disabled, the account used to connect to Microsoft Entra with the Azure AD v2 Preview module must have the Global Administrator, Application Administrator, Cloud Application Administraor, or Application Developer role.
-      * To be able to grant consent to the application, a user with Global Administrator or Privileged Role Administrator role is required. (The account used to create the application can be different than the account used to grant consent.)
-      * To test the application, the account used to connect to Microsoft Entra with the Azure AD v2 Preview module must have the Application Administrator or Cloud Application Administraor role, or be assigned the owner role in the "Office 365 Security Optimization Assessment" application.
+* For the connections to each workload, the account used to sign in does not require an admin role.
+* To be able to create and test the application:
+      * For the application to be created, any user in the tenant can be used, by default. If this setting has been disabled, the account used must have the Global Administrator, Application Administrator, Cloud Application Administraor, or Application Developer role.
+      * To be able to grant admin consent to the application, an account with Global Administrator or Privileged Role Administrator role is required. (The account used to create the application can be different than the account used to grant consent.)
+      * To test the application, the user must have the Application Administrator or Cloud Application Administrator role, or be assigned the owner role in the application.
 
 ### Collection machine
-The collection machine can be any workstation or server, physical or virtual, that can connect via PowerShell to Microsoft Entra, Microsoft Graph, Exchange Online, Security & Compliance Center, SharePoint Online, Microsoft Teams, and Power Platform. It does not need to be AD- or Microsoft Entra-joined unless you have Conditional Access policies requiring it for these connections.
+The collection machine can be any workstation or server, physical or virtual, that can connect via PowerShell to Microsoft Entra ID, Microsoft Graph, Exchange Online, Security & Compliance Center, SharePoint Online, Microsoft Teams, and Power Platform. It does not need to be AD- or Microsoft Entra-joined unless you have Conditional Access policies requiring it for these connections.
 
 If directory synchronisation is used, a script will need to be executed on a domain-joined machine that has the Active Directory PowerShell module installed (whether the collection machine or a different machine).
 
@@ -81,7 +80,7 @@ If traffic to Microsoft 365 routes via proxy infrastructure and the prerequisite
 
 ### Sovereign clouds
 
-If the Office 365 tenant is in a sovereign cloud environment, the `-O365EnvironmentName` parameter must be used with one of the values below. (The default value is `Commercial`, so the parameter is only required for non-commercial clouds):
+If the Office 365 tenant is in a sovereign cloud environment, the `-CloudEnvironment` parameter must be used with one of the values below. (The default value is `Commercial`, so the parameter is only required for non-commercial clouds):
 
 * Use `USGovGCC` for Microsoft Cloud for US Government (GCC\GCC-Moderate)
 * Use `USGovGCCHigh` for Microsoft Cloud for US Government L4 (GCC-High)
@@ -93,34 +92,38 @@ If the Office 365 tenant is in a sovereign cloud environment, the `-O365Environm
 
 If directory synchronisation is used and the Active Directory module is not installed and you cannot run PowerShell as a local admin, you can skip the installation of the module by using `-SkipAdModule`. A machine with the module installed will be needed on the first day of the engagement to collect information about the AD environment. The module can be installed on a machine using `-AdModuleOnly` or manually via another method.
 
-## Microsoft Entra enterprise application
+## Microsoft Entra app registration
 
-An enterprise application is required in order to use Microsoft Graph and other APIs. Installation and configuration of this application is performed by the prerequisites script.
+An app registration is required to use Microsoft Graph and other APIs. Registration and configuration of this application is performed by the prerequisites script.
 
-The permission scope of this application is limited to the following:
+The permission scopes for the application are the following:
 #### Microsoft Graph API:
-* **SecurityEvents.Read.All** (Retrieve active security events within your tenant.)
-* **IdentityRiskyUser.Read.All** (Retrieve identity risk events raised by Microsoft Entra ID Protection.)
-* **IdentityRiskEvent.Read.All** (Retrieve identity risk events raised by Microsoft Entra ID Protection.)
-* **DeviceManagementConfiguration.Read** (Retrieve Intune configuration policies, if applicable.)
-* **AuditLog.Read.All** (Retrieve sign-in activity for user and guest accounts.)
-* **Directory.Read.All** (Retrieve sign-in activity for user and guest accounts. Both this scope and the previous scope are required in order to get sign-in activity.)
-* **Policy.Read.All** (Retrieve Microsoft Entra authorization and conditional access policies.)
-* **SecurityIncident.Read.All** (Retrieve Defender security incidents.)
-* **OnPremDirectorySynchronization.Read.All** (Retrieve Microsoft Entra directory synchronization settings.)
+* **Application.ReadWrite.OwnedBy** (Update applications owned by the application. This allows the application to remove its own client secret when the prerequisites validation and data collection are complete.)
+* **AuditLog.Read.All** (Get sign-in activity for user and guest accounts.)
+* **DeviceManagementConfiguration.Read** (Get Intune configuration policies, if applicable.)
+* **Directory.Read.All** (Get sign-in activity for user and guest accounts. Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)
+* **IdentityRiskEvent.Read.All** (Get identity risk events raised by Microsoft Entra ID Protection.)
+* **IdentityRiskyUser.Read.All** (Get identity risk events raised by Microsoft Entra ID Protection. Both this scope and IdentityRiskEvent.Read.All are required to get risk events.)
+* **OnPremDirectorySynchronization.Read.All** (Get Microsoft Entra directory synchronization settings.)
+* **Policy.Read.All** (Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.)
+* **PrivilegedAccess.Read.AzureADGroup** (Get Privileged Identity Management roles assigned to groups, if applicable.)
+* **RoleManagement.Read.All** (Get Privileged Identity Management roles assigned to users, if applicable.)
+* **SecurityEvents.Read.All** (Get active security events within your tenant.)
+* **SecurityIncident.Read.All** (Get Defender security incidents.)
 #### Dynamics CRM API:
-* **user_impersonation** (Retrieve Dataverse settings.)
+* **user_impersonation** (Get Dataverse settings.)
 #### Windows Defender ATP
-* **AdvancedQuery.Read.All** (For organizations with Microsoft Defender for Endpoint, retrieve health alerts.)
+* **AdvancedQuery.Read.All** (For organisations with Microsoft Defender for Endpoint, get health alerts.)
 
-### Enterprise application security
+### App registration security
 
-Being a security-related assessment, we are conscious of the security of the enterprise application created for it, which is why the following security considerations are made:
-* The application is scoped to specific activities, as indicated above. All scopes are read-only and specific to configuration settings, not access to any user content.
-* A client secret (a password specific to the application that is randomly generated by Microsoft Entra) is created by the installation script for validating the installation of the application. It is configured to expire after 48 hours, but is deleted from the application when the validation is complete.
-* A client secret, also configured to expire after 48 hours, is created on the day of the collection to be able to retrieve the necessary data, but is deleted from the application when the collection is complete.
-* The client secret is stored only in memory during the execution of the prerequisites installation script and the data collection script.
+Being a security-related assessment, we are conscious of the security of the application created for it, which is why the following security considerations are made:
+* The application is scoped to specific activities, as indicated above, using a least-privilege model. All scopes are read-only (except for OwnedBy so it can remove its client secret) and grant access only to configuration settings, not any user-generated data.
+* Client secrets
+   * A client secret (a password randomly generated by Microsoft Entra) is created by the installation script for validating the configuration of the application. It is set to expire after 48 hours, but is removed from the application when the validation is complete.
+   * When the collection script is executed, a client secret (also set to expire after 48 hours) is created to be able to retrieve the necessary data, but is removed from the application when the collection script is complete.
+   * In each scenario, the client secret is stored only in memory by the script and is not accessible upon completion.
 
-### Removal of enterprise application
+### Removal of application
 
-You can remove the enterprise application at the conclusion of the engagement. This is not necessary, however, because the application cannot be used without a valid client secret, which is deleted when the collection script completes. It is important that you **do not** remove the enterprise application between the prerequisites installation and the data collection on the first day of the engagement.
+You may remove the application at the conclusion of the engagement. It is not necessary, however, because it cannot be used without a valid client secret, which is removed when the collection script completes. It is important that you **do not** remove the application between the prerequisites installation and the data collection.

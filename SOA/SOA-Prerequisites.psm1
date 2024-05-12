@@ -98,16 +98,14 @@ function Get-SOADirectory
 
 }
 
-function Get-SPOTenantName
-{
+function Get-InitialDomain {
     <#
-    
-        Used to determine what the SharePoint Tenant Name is during connection tests
-    
+        Used during connection tests for SPO and Teams
     #>
     
-    $domain = ((Get-AzureADDomain | Where-Object {$_.IsInitial -eq $True}).Name)
-    return ($domain -Split ".onmicrosoft.com")[0]
+    # Get the default MSOL domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
+    $OrgData = (Invoke-MgGraphRequest GET "/v1.0/organization" -OutputType PSObject).Value
+    return ($OrgData | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.isInitial }).Name 
 
 }
 
@@ -119,7 +117,7 @@ function Get-SharePointAdminUrl
     
     #>
     Param (
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     # Custom domain provided for connecting to SPO admin endpoint
@@ -127,9 +125,9 @@ function Get-SharePointAdminUrl
         $url = "https://" + $SPOAdminDomain
     }
     else {
-        $tenantName = Get-SPOTenantName
+        $tenantName = (Get-InitialDomain -split ".onmicrosoft")[0]
         
-        switch ($O365EnvironmentName) {
+        switch ($CloudEnvironment) {
             "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
             "USGovGCC"     {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
             "USGovGCCHigh" {$url = "https://" + $tenantName + "-admin.sharepoint.us";break}
@@ -144,7 +142,7 @@ function Get-SharePointAdminUrl
 Function Reset-SOAAppSecret {
     <#
     
-        This function creates a new secret for the application when the app object is created from Get-AzureADApplication
+        This function creates a new secret for the application when the app is retrieved using Get-AzureADApplication
     
     #>
     Param (
@@ -159,23 +157,21 @@ Function Reset-SOAAppSecret {
 }
 Function Reset-SOAAppSecretv2 {
     <#
-    
-        This function creates a new secret for the application when the app object is created from Get-MgApplication
-    
+        This creates a new secret for the application when the app is retrieved using Get-MgApplication
     #>
     Param (
         $App,
         $Task
     )
 
-    # Provision a short lived credential +48 hrs.
-    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.Id -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
+    # Provision a short lived credential (48 hours)
+    $clientsecret = Add-MgApplicationPassword -ApplicationId $App.Id -PasswordCredential @{displayName="$Task on $(Get-Date -Format "dd-MMM-yyyy")";endDateTime=(Get-Date).AddDays(2)}
 
-    Return $clientsecret.Value
+    Return $clientsecret.SecretText
 }
 
 function Remove-SOAAppSecret {
-    # Removes any client secrets associated with the application when the application object is created by Get-AzureADApplication
+    # Removes any client secrets associated with the application when the app is retrieved using Get-AzureADApplication
     param ($app)
 
     $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId
@@ -189,14 +185,15 @@ function Remove-SOAAppSecret {
 }
 
 function Remove-SOAAppSecretv2 {
-    # Removes any client secrets associated with the application when the application object is created by Get-MgApplication
+    # Removes any client secrets associated with the application when the app is retrieved using Get-MgApplication
     param ($app)
 
-    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.Id
+    # Get application again from Entra to be sure it includes any added secrets
+    $secrets = (Get-MgApplication -ApplicationId $app.Id).PasswordCredentials
     foreach ($secret in $secrets) {
         # Suppress errors in case a secret no longer exists
         try {
-            Remove-AzureADApplicationPasswordCredential -ObjectId $app.Id -KeyId $secret.KeyId
+            Remove-MgApplicationPassword -ApplicationId $app.Id -KeyId $secret.KeyId | Out-Null
         }
         catch {}
     }
@@ -236,12 +233,12 @@ Function Get-MSALAccessToken {
         $ClientID,
         $Secret,
         $Resource,
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     Import-MSAL
 
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "Commercial"   {$Authority = "https://login.microsoftonline.com/$TenantName";break}
         "USGovGCC"     {$Authority = "https://login.microsoftonline.com/$TenantName";break}
         "USGovGCCHigh" {$Authority = "https://login.microsoftonline.us/$TenantName";break}
@@ -250,7 +247,7 @@ Function Get-MSALAccessToken {
         "China"        {$Authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
     }
 
-    Write-Verbose "$(Get-Date) Get-MSALAccessToken function called from the pre-reqs module - Tenant: $TenantName ClientID: $ClientID Resource: $Resource SecretLength: $($Secret.Length) O365EnvironmentName: $O365EnvironmentName"
+    Write-Verbose "$(Get-Date) Get-MSALAccessToken function called from the pre-reqs module - Tenant: $TenantName ClientID: $ClientID Resource: $Resource SecretLength: $($Secret.Length) CloudEnvironment: $CloudEnvironment"
 
     $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).WithLegacyCacheCompatibility($false).Build()
 
@@ -277,20 +274,6 @@ Function Get-MSALAccessToken {
     return $token
 }
 
-Function Get-AzureADConnected {
-    <#
-    
-        Determine if AzureAD is connected
-
-    #>
-    Try {
-        Get-AzureADTenantDetail -ErrorAction:SilentlyContinue | Out-Null
-        Return $True
-    } Catch {
-        Return $False
-    }
-}
-
 Function Invoke-GraphTest {
     <#
     
@@ -298,16 +281,16 @@ Function Invoke-GraphTest {
     
     #>
     Param (
-        $AzureADApp,
+        $EntraApp,
         $Secret,
         $TenantDomain,
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     $Success = $False
     $RunError = $Null
 
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "Commercial"   {$Resource = "https://graph.microsoft.com/";break}
         "USGovGCC"     {$Resource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$Resource = "https://graph.microsoft.us/";break}
@@ -316,7 +299,7 @@ Function Invoke-GraphTest {
         "China"        {$Resource = "https://microsoftgraph.chinacloudapi.cn/"}
     }
 
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "Commercial"   {$Base = "https://graph.microsoft.com";break}
         "USGovGCC"     {$Base = "https://graph.microsoft.com";break}
         "USGovGCCHigh" {$Base = "https://graph.microsoft.us";break}
@@ -326,7 +309,7 @@ Function Invoke-GraphTest {
     }
     $Uri = "$Base/beta/security/secureScores?`$top=1"
 
-    $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $AzureADApp.AppId -Secret $Secret -Resource $Resource -O365EnvironmentName $O365EnvironmentName
+    $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $EntraApp.AppId -Secret $Secret -Resource $Resource -CloudEnvironment $CloudEnvironment
     $headerParams = @{'Authorization'="$($Token.TokenType) $($Token.AccessToken)"}
 
     $Result = (Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $Uri -ErrorAction:SilentlyContinue -ErrorVariable:RunError)
@@ -345,7 +328,7 @@ Function Invoke-GraphTest {
 
 }
 
-Function Set-AzureADAppPermission {
+Function Set-EntraAppPermission {
     <#
     
         Sets the required permissions on the application
@@ -354,17 +337,17 @@ Function Set-AzureADAppPermission {
     Param(
         $App,
         $PerformConsent=$False,
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     Write-Host "$(Get-Date) Setting Microsoft Entra enterprise application permissions..."
-    Write-Verbose "$(Get-Date) Set-AzureADAppPermissions App: $($App.Id) Cloud: $O365EnvironmentName"
+    Write-Verbose "$(Get-Date) Set-EntraAppPermissions App: $($App.Id) Cloud: $CloudEnvironment"
 
     $RequiredResources = @()
     $PermissionSet = $False
     $ConsentPerformed = $False
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
 
     <#
     
@@ -382,7 +365,7 @@ Function Set-AzureADAppPermission {
 
         # Add the permissions
         ForEach($Role in $($ResourceRolesGrouping.Group)) {
-            Write-Verbose "$(Get-Date) Set-AzureADAppPermissions Add $($Role.Type) $($Role.Name) ($($Role.ID)) in $O365EnvironmentName cloud"
+            Write-Verbose "$(Get-Date) Set-EntraAppPermissions Add $($Role.Type) $($Role.Name) ($($Role.ID)) in $CloudEnvironment cloud"
             $Perm = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphResourceAccess
             $Perm.Id = $Role.ID
             $Perm.Type = $Role.Type
@@ -411,7 +394,7 @@ Function Set-AzureADAppPermission {
     }
 
     if ($PerformConsent -eq $True) {
-        If((Invoke-Consent -App $App -O365EnvironmentName $O365EnvironmentName) -eq $True) {
+        If((Invoke-Consent -App $App -CloudEnvironment $CloudEnvironment) -eq $True) {
             $ConsentPerformed = $True
         }
     }
@@ -441,7 +424,7 @@ Function Invoke-AppPermissionCheck
         [Switch]$NewPermission
     )
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
     If($NewPermission)
@@ -463,10 +446,19 @@ Function Invoke-AppPermissionCheck
     {
         $Provisioned = $True
         # Refresh roles from Entra
-        # Set App ID based on property being from Get-MgApplication or Get-AzureADApplication
-        if ($App.ObjectId) {$appId = $App.ObjectId} else {$appId = $App.Id}
-        #$App = Get-MgApplication -ApplicationId $appId
-        $App = Get-AzureADApplication -ObjectId $appId
+        $rCounter = 1
+        do {
+            try {
+                Write-Verbose "$(Get-Date) Getting application from Entra (attempt #$rCounter)"
+                $App = Get-MgApplication -ApplicationId $app.Id
+            }
+            catch {
+                Write-Verbose "$(Get-Date) Error getting application from Entra, retrying"
+                $rCounter++
+                Start-Sleep -Seconds 5
+            }
+        }
+        until ($App -or $rCounter -eq 5)
 
         $Missing = @()
 
@@ -522,10 +514,10 @@ Function Invoke-AppTokenRolesCheck {
         $App,
         $Secret,
         $TenantDomain,
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "Commercial"   {$GraphResource = "https://graph.microsoft.com/";break}
         "USGovGCC"     {$GraphResource = "https://graph.microsoft.com/";break}
         "USGovGCCHigh" {$GraphResource = "https://graph.microsoft.us/";break}
@@ -534,7 +526,7 @@ Function Invoke-AppTokenRolesCheck {
         "China"        {$GraphResource = "https://microsoftgraph.chinacloudapi.cn/"}
     }
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
 
     # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
     $MaxTime = 300
@@ -547,7 +539,7 @@ Function Invoke-AppTokenRolesCheck {
         $MissingRoles = @()
         Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Graph endpoint"
         # Obtain the token
-        $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -O365EnvironmentName $O365EnvironmentName
+        $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -CloudEnvironment $CloudEnvironment
 
         If($Null -ne $Token)
         {
@@ -600,10 +592,10 @@ Function Invoke-AppTokenRolesCheckV2 {
 
     #>
     Param (
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
-    $Roles = Get-RequiredAppPermissions -O365EnvironmentName $O365EnvironmentName -HasATPP2License $ATPLicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
 
     $ActiveScopes = (Get-MgContext).Scopes
     $MissingRoles = @()
@@ -632,10 +624,10 @@ Function Invoke-Consent {
     #>
     Param (
         $App,
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "Commercial"   {$AuthLocBase = "https://login.microsoftonline.com";break}
         "USGovGCC"     {$AuthLocBase = "https://login.microsoftonline.com";break}
         "USGovGCCHigh" {$AuthLocBase = "https://login.microsoftonline.us";break}
@@ -667,29 +659,32 @@ Function Invoke-Consent {
     Return $True
 }
 
-Function Install-AzureADApp {
+Function Install-EntraApp {
     <#
 
         Installs the Entra enterprise application used for accessing Graph and Dynamics
     
     #>
     Param(
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     # Create the Entra application
-    Write-Verbose "$(Get-Date) Install-AzureADApp Installing App"
-    #$AzureADApp = New-AzureADApplication -DisplayName "Microsoft Security Optimization Assessment"  -ReplyUrls @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-    $AzureADApp = New-MgApplication -DisplayName "Microsoft Security Assessment" `
+    Write-Verbose "$(Get-Date) Install-EntraApp Installing App"
+    $EntraApp = New-MgApplication -DisplayName "Microsoft Security Assessment" `
         -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")} `
         -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
         -SignInAudience AzureADMyOrg
 
+    # Add service principal (enterprise app) as owner of its app registration
+    $appSp = Get-MgServicePrincipal -Filter "appId eq '$($EntraApp.AppId)'"
+    New-MgApplicationOwnerByRef -ApplicationId $EntraApp.Id -OdataId "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+
     # Set up the correct permissions
-    Set-AzureADAppPermission -App $AzureADApp -PerformConsent:$True -O365EnvironmentName $O365EnvironmentName
+    Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
 
     # Return the newly created application
-    Return (Get-MgApplication -ApplicationId $AzureADApp.Id)
+    Return (Get-MgApplication -ApplicationId $EntraApp.Id)
     
 }
 
@@ -842,16 +837,16 @@ Function Get-PSModulePath {
 
 function Get-LicenseStatus {
     param ($LicenseType)
-    if ($LicenseType -eq 'ATPP2') {
-        # SKUs that start with strings include Defender P2 to be able to use the Defender API
-        $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','SPE_F5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','THREAT_INTELLIGENCE','M365_SECURITY_COMPLIANCE','Microsoft_365 G5_Security','M365_G5')
+    if ($LicenseType -eq 'MDE') {
+        # SKUs that start with strings include MDE to be able to use its advanced hunting API
+        $targetSkus = @('DEFENDER_ENDPOINT','IDENTITY','M365_G3_R','M365_G5_GCC','M365_S','M365EDU_A3_STUD','M365EDU_A3_F''M365EDU_A5_STUD','M365EDU_A5_F','MDATP','Microsoft 365 A3 Suite','Microsoft_365_E','Microsoft_D','Microsoft_Teams_Rooms_Pro_F','Microsoft_Teams_Rooms_Pro_G','O365_w/o Teams Bundle_M','O365_w/o_Teams_Bundle_M','SPE_','WIN_','WIN10_ENT_A5','WIN10_VDA_E5','WINE5_G')
     }
     else {
         Write-Error -Message "$(Get-Date) Invalid license type specified"
         return $false
     }
     
-    $subscribedSku = Get-AzureADSubscribedSku
+    $subscribedSku = Get-MgSubscribedSku
     foreach ($tSku in $targetSkus) {
         foreach ($sku in $subscribedSku) {
             if ($sku.PrepaidUnits.Enabled -gt 0 -or $sku.PrepaidUnits.Warning -gt 0 -and $sku.SkuPartNumber -match $tSku) {
@@ -1072,7 +1067,7 @@ Function Get-ManualModules
 
 Function Invoke-SOAModuleCheck {
     param (
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
     $RequiredModules = @()
     
@@ -1080,13 +1075,12 @@ Function Invoke-SOAModuleCheck {
     $ConflictModules = @()
 
     # Bypass checks
-    If($Bypass -notcontains "AAD") { $RequiredModules += "AzureADPreview" }
     If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SPO") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
     If (($Bypass -notcontains "EXO" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
     If ($Bypass -notcontains "PP") {
-        if ($O365EnvironmentName -eq "Germany") {
+        if ($CloudEnvironment -eq "Germany") {
             Write-Host "$(Get-Date) Skipping Power Apps module because Power Platform isn't supported in Germany cloud..."
         }
         else {
@@ -1096,6 +1090,7 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "Graph") {
         $RequiredModules += "Microsoft.Graph.Authentication"
         $RequiredModules += "Microsoft.Graph.Applications"
+        $RequiredModules += "Microsoft.Graph.Identity.DirectoryManagement"
     }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
@@ -1135,12 +1130,6 @@ function Import-PSModule {
             $PAPath = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).ModuleBase
             Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force
         }
-        elseif ($ModuleName -eq 'AzureADPreview') {
-            if (Get-Module -Name AzureAD) {
-                # Unload AAD module to ensure only cmdlets from the AAD Preview module are used
-                Remove-Module AzureAD
-            }
-        }
         Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue
         if ($loadError) {
             Write-Error -Message "Error loading module $ModuleName."
@@ -1161,7 +1150,7 @@ function Import-PSModule {
 Function Test-Connections {
     Param(
         $RPSProxySetting,
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     $Connections = @()
@@ -1181,7 +1170,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Microsft Entra with Azure AD PowerShell 1..."
-        switch ($O365EnvironmentName) {
+        switch ($CloudEnvironment) {
             "Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "USGovGCC"     {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
             "USGovGCCHigh" {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
@@ -1211,45 +1200,6 @@ Function Test-Connections {
 
     <#
     
-        AD PowerShell Version 2.
-    
-    #>
-    If($Bypass -notcontains "AAD") {
-        Import-PSModule -ModuleName AzureADPreview -Implicit $UseImplicitLoading
-        # Reset vars
-        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
-
-        Write-Host "$(Get-Date) Connecting to Microsoft Entra with Azure AD PowerShell 2..."
-        switch ($O365EnvironmentName) {
-            "Commercial"   {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovGCC"     {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovGCCHigh" {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-            "USGovDoD"     {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-            "Germany"      {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
-            "China"        {Connect-AzureAD -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -AzureEnvironmentName AzureChinaCloud | Out-Null}
-        }
-
-        # If no error, try test command
-        If($ConnectError) { $Connect = $False; $Command = $False} Else { 
-            $Connect = $True 
-            # Cmdlet that can be run by any user
-            Get-AzureADUser -Top 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
-            # Cmdlet that requires admin role
-            # Get-AzureADDomain -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
-            If($CommandError) { $Command = $False } Else { $Command = $True }
-        }
-
-        $Connections += New-Object -TypeName PSObject -Property @{
-            Name="AADV2"
-            Connected=$Connect
-            ConnectErrors=$ConnectError
-            TestCommand=$Command
-            TestCommandErrors=$CommandError
-        }
-    }
-
-    <#
-    
         SCC
     
     #>
@@ -1263,7 +1213,7 @@ Function Test-Connections {
 
         Write-Host "$(Get-Date) Connecting to SCC..."
         Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
-        switch ($O365EnvironmentName) {
+        switch ($CloudEnvironment) {
             "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ShowBanner:$False | Out-Null;break}
             "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ShowBanner:$False | Out-Null;break}
             "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -ShowBanner:$False | Out-Null;break}
@@ -1303,7 +1253,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        switch ($O365EnvironmentName) {
+        switch ($CloudEnvironment) {
             "Commercial"   {Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovGCC"     {Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
             "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
@@ -1346,9 +1296,9 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        $adminUrl = Get-SharePointAdminUrl -O365EnvironmentName $O365EnvironmentName
+        $adminUrl = Get-SharePointAdminUrl -CloudEnvironment $CloudEnvironment
         Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
-        switch ($O365EnvironmentName) {
+        switch ($CloudEnvironment) {
             "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCC"     {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
             "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
@@ -1387,8 +1337,8 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
-        $InitialDomain = (Get-AzureADTenantDetail | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.Initial }).Name
-        switch ($O365EnvironmentName) {
+        $InitialDomain = Get-InitialDomain
+        switch ($CloudEnvironment) {
             "Commercial"    {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
             "USGovGCC"      {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
             "USGovGCCHigh"  {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
@@ -1432,7 +1382,7 @@ Function Test-Connections {
     
     #>
     If($Bypass -notcontains 'PP') {
-        if ($O365EnvironmentName -eq 'Germany') {
+        if ($CloudEnvironment -eq 'Germany') {
             Write-Host "$(Get-Date) Skipping connection to Power Apps because it is not supported in Germany cloud..."
         }
         else {
@@ -1441,7 +1391,7 @@ Function Test-Connections {
             $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
             Write-Host "$(Get-Date) Connecting to Power Apps..."
-            switch ($O365EnvironmentName) {
+            switch ($CloudEnvironment) {
                 "Commercial"   {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
                 "USGovGCC"     {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint usgov | Out-Null;break}
                 "USGovGCCHigh" {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint usgovhigh | Out-Null;break}
@@ -1489,8 +1439,8 @@ Function Test-Connections {
 Function Get-RequiredAppPermissions {
     param
     (
-    [string]$O365EnvironmentName="Commercial",
-    $HasATPP2License
+    [string]$CloudEnvironment="Commercial",
+    $HasMDELicense
     )
 
     <#
@@ -1549,7 +1499,7 @@ Function Get-RequiredAppPermissions {
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "USGovGCCHigh" {$EnvironmentRoleID = "73d442ea-eff8-40b5-a216-87616d77e983";break}
         "USGovDoD"     {$EnvironmentRoleID = "73d442ea-eff8-40b5-a216-87616d77e983";break}
         Default        {$EnvironmentRoleID = "45cc0394-e837-488b-a098-1918f48d186c"}
@@ -1566,7 +1516,26 @@ Function Get-RequiredAppPermissions {
         Type='Scope'
         Resource="00000007-0000-0000-c000-000000000000" # Dynamics 365
     }
-    If ($O365EnvironmentName -ne "USGovGCCHigh" -and $O365EnvironmentName -ne "USGovDoD"){
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="c7fbd983-d9aa-4fa7-84b8-17382c103bc4"
+        Name="RoleManagement.Read.All"
+        Type='Role'
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="01e37dc9-c035-40bd-b438-b2879c4870a6"
+        Name="PrivilegedAccess.Read.AzureADGroup"
+        Type='Role'
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID="18a4783c-866b-4cc7-a460-3d5e5662c884"
+        Name="Application.ReadWrite.OwnedBy"
+        Type='Role'
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+
+    If ($CloudEnvironment -ne "USGovGCCHigh" -and $CloudEnvironment -ne "USGovDoD"){
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="bb70e231-92dc-4729-aff5-697b3f04be95"
             Name="OnPremDirectorySynchronization.Read.All"
@@ -1576,14 +1545,14 @@ Function Get-RequiredAppPermissions {
     }
 
     $MDEAvailable = $false
-    switch ($O365EnvironmentName) {
+    switch ($CloudEnvironment) {
         "Commercial"   {$MDEAvailable=$true;break}
         "USGovGCCHigh" {$MDEAvailable=$true;break}
         "USGovDoD"     {$MDEAvailable=$true;break}
         "Germany"      {$MDEAvailable=$false;break}
         "China"        {$MDEAvailable=$false}
     }
-    if ($HasATPP2License -eq $true -and $MDEAvailable -eq $true) {
+    if ($HasMDELicense -eq $true -and $MDEAvailable -eq $true) {
         Write-Verbose "Adding Defender for Endpoint role to App"
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="93489bf5-0fbc-4f2d-b901-33f2fe08ff05"
@@ -1668,52 +1637,71 @@ Function Invoke-SOAVersionCheck
 
 }
 
-function Get-SOAAzureADApp {
+function Get-SOAEntraApp {
     Param(
-        [string]$O365EnvironmentName
+        [string]$CloudEnvironment
     )
 
     # Determine if Microsoft Entra application exists
-    #$AzureADApp = Get-MgApplication -Filter "displayName eq 'Microsoft Security Assessment'" | Where-Object {$_.Web.RedirectUris -Contains "https://security.optimization.assessment.local"}
-    $AzureADApp = Get-MgApplication -Filter "web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')" -ConsistencyLevel Eventual -CountVariable CountVar
+    $EntraApp = Get-MgApplication -Filter "web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')" -ConsistencyLevel Eventual -CountVariable CountVar
 
-    if (!$AzureADApp) {
+    if ($EntraApp -and $RemoveExistingEntraApp -and $DoNotRemediate -eq $false) {
+        Write-Host "$(Get-Date) Removing existing Microsoft Entra application..."
+        try {
+            Remove-MgApplication -ApplicationId $EntraApp.Id
+            $EntraApp = $null
+        }
+        catch {
+            Write-Warning "$(Get-Date) Unable to remove existing Microsoft Entra application. Please remove it manually."
+        }
+    }
+
+    if (!$EntraApp) {
         if ($DoNotRemediate -eq $false) {
             Write-Host "$(Get-Date) Creating Microsoft Entra enterprise application..."
-            $AzureADApp = Install-AzureADApp -O365EnvironmentName $O365EnvironmentName
-            Write-Verbose "$(Get-Date) Get-SOAAzureADApp App $($AzureADApp.Id)"
+            $EntraApp = Install-EntraApp -CloudEnvironment $CloudEnvironment
+            Write-Verbose "$(Get-Date) Get-SOAEntraApp App $($EntraApp.Id)"
         }
     }
     else {
         # Check whether the application name should be updated
-        if ($AzureADApp.DisplayName -eq 'Office 365 Security Optimization Assessment') {
+        if ($EntraApp.DisplayName -eq 'Office 365 Security Optimization Assessment') {
             Write-Verbose "$(Get-Date) Renaming the display name of the Microsoft Entra application..."
-            Update-MgApplication -ApplicationId $AzureADApp.Id -DisplayName 'Microsoft Security Assessment'
+            Update-MgApplication -ApplicationId $EntraApp.Id -DisplayName 'Microsoft Security Assessment'
         }
 
         # Check if public client URI is set
         $pcRUrl = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
-        if ($AzureADApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
+        if ($EntraApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
                 Write-Verbose "$(Get-Date) Setting Microsoft Entra application public client redirect URI..."
-                Update-MgApplication -ApplicationId $AzureADApp.Id -PublicClient @{'RedirectUris'=$pcRUrl}
+                Update-MgApplication -ApplicationId $EntraApp.Id -PublicClient @{'RedirectUris'=$pcRUrl}
                 # Get app again so public client is set for checking DoNotRemediate in calling function
-                $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
+                $EntraApp = Get-MgApplication -ApplicationId $EntraApp.Id
             }
         }
         # Check if correct web redirect URIs are set
         $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-        if (Compare-Object -ReferenceObject $AzureADApp.Web.RedirectUris -DifferenceObject $webRUri) {
+        if (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri) {
             if ($DoNotRemediate -eq $false) {
                 Write-Verbose "$(Get-Date) Setting Microsoft Entra application web redirect URIs..."
-                Update-MgApplication -ApplicationId $AzureADApp.Id -Web @{'RedirectUris'=$webRUri}
-                $AzureADApp = Get-MgApplication -ApplicationId $AzureADApp.Id
+                Update-MgApplication -ApplicationId $EntraApp.Id -Web @{'RedirectUris'=$webRUri}
+                $EntraApp = Get-MgApplication -ApplicationId $EntraApp.Id
             }
         }
+        # Check if service principal (enterprise app) is owner of its app registration
+        $appOwners = Get-MgApplicationOwner -ApplicationId $EntraApp.Id
+        $appSp = Get-MgServicePrincipal -Filter "appId eq '$($EntraApp.AppId)'"
+        if ($appOwners.Id -notcontains $appSp.Id) {
+            if ($DoNotRemediate -eq $false) {
+                Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
+                New-MgApplicationOwnerByRef -ApplicationId $EntraApp.Id -OdataId "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+            }
+        }  
     }
 
-    Return $AzureADApp
+    Return $EntraApp
 
 }
 
@@ -1727,10 +1715,10 @@ Function Test-SOAApplication
         $TenantDomain,
         [Switch]$WriteHost,
         [Switch]$NewTokens,
-        [string]$O365EnvironmentName="Commercial"
+        [string]$CloudEnvironment="Commercial"
     )
 
-    Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length) O365EnvironmentName $O365EnvironmentName"
+    Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length) CloudEnvironment $CloudEnvironment"
 
     # Perform permission check
     If($WriteHost) { Write-Host "$(Get-Date) Performing application permission check... (This may take up to 5 minutes)" }
@@ -1741,9 +1729,9 @@ Function Test-SOAApplication
     {
         If($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
         If ($NewTokens){
-            $TokenCheck = Invoke-AppTokenRolesCheckV2 -O365EnvironmentName $O365EnvironmentName
+            $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
         } Else {
-            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
+            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment
         }
     }
 
@@ -1761,37 +1749,40 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [ValidateSet("AAD","MSOL","EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
-        [Switch]$UseProxy,
-        [Parameter(DontShow)][Switch]$AllowMultipleWindows,
-        [Parameter(DontShow)][switch]$NoVersionCheck,
-        [switch]$RemoveMultipleModuleVersions,
-        [switch]$UseImplicitLoading,
+        [ValidateSet("MSOL","EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
+    [switch]$UseProxy,
+    [Parameter(DontShow)][Switch]$AllowMultipleWindows,
+    [Parameter(DontShow)][switch]$NoVersionCheck,
+    [switch]$RemoveMultipleModuleVersions,
+    [switch]$UseImplicitLoading,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
         [ValidateScript({if (Resolve-DnsName -Name $PSItem) {$true} else {throw "SPO admin domain does not resolve.  Verify you entered a valid fully qualified domain name."}})]
-        [ValidateNotNullOrEmpty()][string]$SPOAdminDomain,
+    [ValidateNotNullOrEmpty()][string]$SPOAdminDomain,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
-    [Parameter(ParameterSetName='AzureADAppOnly')]
-        [Switch]$DoNotRemediate,
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$DoNotRemediate,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
-    [Parameter(ParameterSetName='AzureADAppOnly')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [ValidateSet("Commercial", "USGovGCC", "USGovGCCHigh", "USGovDoD", "Germany", "China")][string]$O365EnvironmentName="Commercial",
+        [Alias('O365EnvironmentName')][ValidateSet("Commercial", "USGovGCC", "USGovGCCHigh", "USGovDoD", "Germany", "China")][string]$CloudEnvironment="Commercial",
     [Parameter(ParameterSetName='ConnectOnly')]
-        [Switch]$ConnectOnly,
+        [switch]$ConnectOnly,
     [Parameter(ParameterSetName='ModulesOnly')]
-        [Switch]$ModulesOnly,
+        [switch]$ModulesOnly,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [Switch]$SkipADModule,
+        [switch]$SkipADModule,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [Switch]$ADModuleOnly,
-    [Parameter(ParameterSetName='AzureADAppOnly')]
-        [Switch]$AzureADAppOnly
+        [switch]$ADModuleOnly,
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [Alias('AzureADAppOnly')][switch]$EntraAppOnly,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$RemoveExistingEntraApp
     )
 
     <#
@@ -1815,7 +1806,7 @@ Function Install-SOAPrerequisites
     # Default run
     $ConnectCheck = $True
     $ModuleCheck = $True
-    $AzureADAppCheck = $True
+    $EntraAppCheck = $True
 
     # Default to remediate (applicable only when not using ConnectOnly)
     if ($DoNotRemediate -eq $false){
@@ -1830,20 +1821,20 @@ Function Install-SOAPrerequisites
     If($ModulesOnly) {
         $ConnectCheck = $False
         $ModuleCheck = $True
-        $AzureADAppCheck = $False
+        $EntraAppCheck = $False
     }
 
     # Change based on ConnectOnly flag
     If($ConnectOnly) {
         $ConnectCheck = $True
-        $AzureADAppCheck = $False
+        $EntraAppCheck = $False
         $ModuleCheck = $False
     }
 
-    # Change based on AzureADAppOnly flag
-    If($AzureADAppOnly) {
+    # Change based on EntraAppOnly flag
+    If($EntraAppOnly) {
         $ConnectCheck = $False
-        $AzureADAppCheck = $True
+        $EntraAppCheck = $True
         $ModuleCheck = $False
     }
 
@@ -1949,7 +1940,7 @@ Function Install-SOAPrerequisites
         if ($ModuleCheck) {
             Write-Host "- Install the latest version of PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
         }
-        if ($AzureADAppCheck) {
+        if ($EntraAppCheck) {
             Write-Host "- Create a Microsoft Entra enterprise application in your tenant:" -ForegroundColor Green
             Write-Host "   -- The application name is 'Microsoft Security Assessment'" -ForegroundColor Green
             Write-Host "   -- The application will not be visible to end users" -ForegroundColor Green
@@ -2012,7 +2003,7 @@ Function Install-SOAPrerequisites
 
         Write-Host "$(Get-Date) Checking modules..."
 
-        $ModuleCheckResult = Invoke-SOAModuleCheck -O365EnvironmentName $O365EnvironmentName
+        $ModuleCheckResult = Invoke-SOAModuleCheck -CloudEnvironment $CloudEnvironment
 
         if ($RemoveMultipleModuleVersions) {
             $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
@@ -2037,7 +2028,7 @@ Function Install-SOAPrerequisites
                 Invoke-ModuleFix $Modules_Error
 
                 Write-Host "$(Get-Date) Post-remediation module check..."
-                $ModuleCheckResult = Invoke-SOAModuleCheck -O365EnvironmentName $O365EnvironmentName
+                $ModuleCheckResult = Invoke-SOAModuleCheck -CloudEnvironment $CloudEnvironment
                 if ($RemoveMultipleModuleVersions) {
                     $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
                     $Modules_Error = @($ModuleCheckResult | Where-Object {$_.Installed -eq $False -or $_.Multiple -eq $True -or $_.NewerAvailable -eq $true})
@@ -2089,28 +2080,17 @@ Function Install-SOAPrerequisites
     If($ConnectCheck -eq $True) {
         # Proceed to testing connections
         
-        $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting -O365EnvironmentName $O365EnvironmentName)
+        $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting -CloudEnvironment $CloudEnvironment)
         
         $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
         $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $Null -ne $_.OtherErrors})
     }
 
-    If($AzureADAppCheck -eq $True) {
+    If($EntraAppCheck -eq $True) {
 
-        # When AzureADAppCheck is run by itself, this script will not be connected to Microsoft Entra
-        If((Get-AzureADConnected) -eq $False) {
-            switch ($O365EnvironmentName) {
-                "Commercial"   {Connect-AzureAD | Out-Null;break}
-                "USGovGCC"     {Connect-AzureAD | Out-Null;break}
-                "USGovGCCHigh" {Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-                "USGovDoD"     {Connect-AzureAD -AzureEnvironmentName AzureUSGovernment | Out-Null;break}
-                "Germany"      {Connect-AzureAD -AzureEnvironmentName AzureGermanyCloud | Out-Null;break}
-                "China"        {Connect-AzureAD -AzureEnvironmentName AzureChinaCloud | Out-Null}
-            }
-        }
-
+        # When EntraAppOnly is run by itself, this script will not yet be connected to Microsoft Entra
         Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
-        switch ($O365EnvironmentName) {
+        switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
             "USGovGCCHigh" {$cloud = 'USGov'}
@@ -2143,17 +2123,20 @@ Function Install-SOAPrerequisites
         if (Get-MgContext) {
             Write-Host "$(Get-Date) Checking Microsoft Entra enterprise application..."
 
-            # Get the default MSOL domain
-            $tenantdomain = (Get-AzureADDomain | Where-Object {$_.IsInitial -eq $true}).Name
+            # Get the tenant domain
+            $tenantdomain = Get-InitialDomain
+
+            $script:MDELicensed = Get-LicenseStatus -LicenseType MDE
+            Write-Verbose "$(Get-Date) Get-LicenseStatus MDE License found: $($script:MDELicensed)"
 
             # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesnt
-            $AzureADApp = Get-SOAAzureADApp -O365EnvironmentName $O365EnvironmentName
+            $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
         }
 
-        If($AzureADApp) {
+        If($EntraApp) {
             # Check if redirect URIs not set for existing app because DoNotRemediate is True
             $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-            if (($AzureADApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $AzureADApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
+            if (($EntraApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
                 # Fail the Entra app check
                 $CheckResults += New-Object -Type PSObject -Property @{
                     Check="Entra Application"
@@ -2167,16 +2150,16 @@ Function Install-SOAPrerequisites
                     Pass=$true
                 }
             }
- 
+
             # Reset secret
-            $clientsecret = Reset-SOAAppSecretv2 -App $AzureADApp -Task "Prereq"
+            $clientsecret = Reset-SOAAppSecretv2 -App $EntraApp -Task "Prereq"
             Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
             Start-Sleep 10
 
             # Reconnect with Application permissions
             Disconnect-MgGraph | Out-Null
             $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
-            $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($AzureADApp.AppId), $SSCred
+            $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($EntraApp.AppId), $SSCred
             $ConnCount = 0
             Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
             Do {
@@ -2189,10 +2172,7 @@ Function Install-SOAPrerequisites
                 }
             } Until ($null -ne (Get-MgContext))
 
-            $ATPLicensed = Get-LicenseStatus -LicenseType ATPP2
-            Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $ATPLicensed"
-
-            $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
+            $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                 
             # Entra App Permission - Perform remediation if specified
             If($AppTest.Permissions -eq $False -and $DoNotRemediate -eq $false)
@@ -2201,7 +2181,7 @@ Function Install-SOAPrerequisites
                 Write-Host "$(Get-Date) Remediating application permissions..."
                 Write-Host "$(Get-Date) Reconnecting to Graph with delegated authentication..."
                 Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
-                If((Set-AzureADAppPermission -App $AzureADApp -PerformConsent:$True -O365EnvironmentName $O365EnvironmentName) -eq $True) {
+                If((Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment) -eq $True) {
                     # Perform check again after setting permissions
                     $ConnCount = 0
                     Write-Host "$(Get-Date) Reconnecting to Graph with application authentication..."
@@ -2214,7 +2194,7 @@ Function Install-SOAPrerequisites
                             Start-Sleep 5
                         }
                     } Until ($null -ne (Get-MgContext))
-                    $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
+                    $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                 }
             }
 
@@ -2223,9 +2203,9 @@ Function Install-SOAPrerequisites
                 Write-Host "$(Get-Date) Missing roles in access token; possible that consent was not completed..."
                 if ($DoNotRemediate -eq $false) {
                     # Request admin consent
-                    If((Invoke-Consent -App $AzureADApp -O365EnvironmentName $O365EnvironmentName) -eq $True) {
+                    If((Invoke-Consent -App $EntraApp -CloudEnvironment $CloudEnvironment) -eq $True) {
                         # Perform check again after consent
-                        $AppTest = Test-SOAApplication -App $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName -WriteHost
+                        $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                     }
                 }
             }
@@ -2242,7 +2222,7 @@ Function Install-SOAPrerequisites
 
             # Perform Graph Check for calls with self-managed token
             Write-Host "$(Get-Date) Performing Graph Test..."
-            $CheckResults += Invoke-GraphTest -AzureADApp $AzureADApp -Secret $clientsecret -TenantDomain $tenantdomain -O365EnvironmentName $O365EnvironmentName
+            $CheckResults += Invoke-GraphTest -EntraApp $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment
 
             # Perform Graph check using credentials on the App
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
@@ -2253,7 +2233,8 @@ Function Install-SOAPrerequisites
                     Check="Graph SDK Connection"
                     Pass=$False
                 }
-            } Else {
+            }
+            else {
                 $CheckResults += New-Object -Type PSObject -Property @{
                     Check="Graph SDK Connection"
                     Pass=$True
@@ -2271,9 +2252,11 @@ Function Install-SOAPrerequisites
                         Pass=$False
                     }
                 }
+                # Remove client secret
+                Remove-SOAAppSecretv2 -app $EntraApp
+                # Disconnect
+                Disconnect-MgGraph | Out-Null
             }
-            # Remove client secret
-            Remove-SOAAppSecretv2 -app $AzureADApp
         } 
         Else 
         {
@@ -2347,7 +2330,7 @@ Function Install-SOAPrerequisites
 
     }
 
-    If($AzureADAppCheck -eq $True) {
+    If($EntraAppCheck -eq $True) {
 
         Write-Host "$(Get-Date) Microsoft Entra enterprise application checks" -ForegroundColor Green
 
