@@ -447,18 +447,19 @@ Function Invoke-AppPermissionCheck
         $Provisioned = $True
         # Refresh roles from Entra
         $rCounter = 1
-        do {
+        $appId = $app.Id
+        while ($rCounter -le 5) {
             try {
                 Write-Verbose "$(Get-Date) Getting application from Entra (attempt #$rCounter)"
-                $App = Get-MgApplication -ApplicationId $app.Id
+                $App = Get-MgApplication -ApplicationId $appId -ErrorAction Stop
+                break
             }
             catch {
-                Write-Verbose "$(Get-Date) Error getting application from Entra, retrying"
+                Write-Verbose "$(Get-Date) Error getting application from Entra, retrying in 5 seconds"
                 $rCounter++
                 Start-Sleep -Seconds 5
             }
         }
-        until ($App -or $rCounter -eq 5)
 
         $Missing = @()
 
@@ -476,7 +477,7 @@ Function Invoke-AppPermissionCheck
 
         If($Provisioned -eq $True)
         {
-            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $appId Role Count $($Roles.Count) OK"
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($app.Id) Role Count $($Roles.Count) OK"
             Break
         } 
         Else 
