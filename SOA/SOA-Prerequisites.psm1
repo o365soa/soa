@@ -677,12 +677,12 @@ Function Install-EntraApp {
         -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
         -SignInAudience AzureADMyOrg
 
+    # Set up the correct permissions
+    Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
+
     # Add service principal (enterprise app) as owner of its app registration
     $appSp = Get-MgServicePrincipal -Filter "appId eq '$($EntraApp.AppId)'"
     New-MgApplicationOwnerByRef -ApplicationId $EntraApp.Id -OdataId "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
-
-    # Set up the correct permissions
-    Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
 
     # Return the newly created application
     Return (Get-MgApplication -ApplicationId $EntraApp.Id)
