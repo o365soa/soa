@@ -1650,6 +1650,7 @@ function Get-SOAEntraApp {
     )
 
     # Determine if Microsoft Entra application exists
+    # CountVariable is mandatory when using Eventual consistency level, otherwise no data is returned but without any error
     $EntraApp = Get-MgApplication -Filter "web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')" -ConsistencyLevel Eventual -CountVariable CountVar
 
     if ($EntraApp -and $RemoveExistingEntraApp -and $DoNotRemediate -eq $false) {
