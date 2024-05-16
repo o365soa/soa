@@ -1097,7 +1097,6 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "Graph") {
         $RequiredModules += "Microsoft.Graph.Authentication"
         $RequiredModules += "Microsoft.Graph.Applications"
-        $RequiredModules += "Microsoft.Graph.Identity.DirectoryManagement"
     }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
