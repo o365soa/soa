@@ -20,7 +20,6 @@ The latest version of the following PowerShell modules are installed:
 * From the Microsoft Graph PowerShell SDK: 
    * Microsoft.Graph.Authentication
    * Microsoft.Graph.Applications
-   * Microsoft.Graph.Identity.DirectoryManagement
 * Active Directory
 
 Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
@@ -101,7 +100,7 @@ The permission scopes for the application are the following:
 * **Application.ReadWrite.OwnedBy** (Update applications owned by the application. This allows the application to remove its own client secret when the prerequisites validation and data collection are complete.)
 * **AuditLog.Read.All** (Get sign-in activity for user and guest accounts.)
 * **DeviceManagementConfiguration.Read** (Get Intune configuration policies, if applicable.)
-* **Directory.Read.All** (Get sign-in activity for user and guest accounts. Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)
+* **Directory.Read.All** (Get subscriptions in the tenant and sign-in activity for user and guest accounts. Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)
 * **IdentityRiskEvent.Read.All** (Get identity risk events raised by Microsoft Entra ID Protection.)
 * **IdentityRiskyUser.Read.All** (Get identity risk events raised by Microsoft Entra ID Protection. Both this scope and IdentityRiskEvent.Read.All are required to get risk events.)
 * **OnPremDirectorySynchronization.Read.All** (Get Microsoft Entra directory synchronization settings.)

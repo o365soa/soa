@@ -853,10 +853,10 @@ function Get-LicenseStatus {
         }
     }
     
-    $subscribedSku = Get-MgSubscribedSku
+    $subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/subscribedSkus" -OutputType PSObject
     foreach ($tSku in $targetSkus) {
-        foreach ($sku in $subscribedSku) {
-            if ($sku.PrepaidUnits.Enabled -gt 0 -or $sku.PrepaidUnits.Warning -gt 0 -and $sku.SkuPartNumber -match $tSku) {
+        foreach ($sku in $subscribedSku.value) {
+            if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
                 Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
                 return $true
             }
