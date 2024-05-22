@@ -1216,7 +1216,7 @@ Function Test-Connections {
             }
             else {
                 $Connect = $True
-                $GraphSDKConnect = $true
+                $GraphSDKConnected = $true
             }
             if ($Connect -eq $true) {
                 $me = Invoke-MgGraphRequest -Method GET -Uri '/v1.0/me' -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError
@@ -1371,34 +1371,39 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        $adminUrl = Get-SharePointAdminUrl -CloudEnvironment $CloudEnvironment
-        Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
-        switch ($CloudEnvironment) {
-            "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovGCC"     {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "Germany"      {Connect-SPOService -Url $adminUrl -Region Germany -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-            "China"        {Connect-SPOService -Url $adminUrl -Region China -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-        }
+        # Connect only if SPO admin domain provided or if not provided but Graph SDK is connected
+        if ($SPOAdminDomain -or (-not($SPOAdminDomain) -and $GraphSDKConnected -eq $true)) {
+            $adminUrl = Get-SharePointAdminUrl -CloudEnvironment $CloudEnvironment
+            Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
+            switch ($CloudEnvironment) {
+                "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCC"     {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "Germany"      {Connect-SPOService -Url $adminUrl -Region Germany -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
+                "China"        {Connect-SPOService -Url $adminUrl -Region China -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+            }
 
-        # If no error, try test command
-        If($ConnectError) { $Connect = $False; $Command = $False} Else { 
-            $Connect = $True 
-            # Cmdlet that can be run by anyone
-            Get-SPOSite -Limit 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError -WarningAction SilentlyContinue | Out-Null
-            # Cmdlet that can be run by admin
-            #Get-SPOTenant -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
-            If($CommandError) { $Command = $False } Else { $Command = $True }
+            # If no error, try test command
+            If($ConnectError) { $Connect = $False; $Command = $False} Else { 
+                $Connect = $True 
+                # Cmdlet that can be run by anyone
+                Get-SPOSite -Limit 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError -WarningAction SilentlyContinue | Out-Null
+                # Cmdlet that can be run by admin
+                #Get-SPOTenant -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
+                If($CommandError) { $Command = $False } Else { $Command = $True }
+            }
+        
+            $Connections += New-Object -TypeName PSObject -Property @{
+                Name="SPO"
+                Connected=$Connect
+                ConnectErrors=$ConnectError
+                TestCommand=$Command
+                TestCommandErrors=$CommandError
+            }
+        
         }
-
-        $Connections += New-Object -TypeName PSObject -Property @{
-            Name="SPO"
-            Connected=$Connect
-            ConnectErrors=$ConnectError
-            TestCommand=$Command
-            TestCommandErrors=$CommandError
-        }
+        
     }
     
     <#
@@ -1411,43 +1416,45 @@ Function Test-Connections {
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-        Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
-        $InitialDomain = Get-InitialDomain
-        switch ($CloudEnvironment) {
-            "Commercial"    {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
-            "USGovGCC"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
-            "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
-            "USGovDoD"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
-            #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
-            "China"         {Write-Host "Teams is not available in 21Vianet offering";break}
-            default         {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
-        }
-        #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
+        if ($GraphSDKConnected -eq $true) {
+            Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
+            $InitialDomain = Get-InitialDomain
+            switch ($CloudEnvironment) {
+                "Commercial"    {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovGCC"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovDoD"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
+                #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
+                "China"         {Write-Host "Teams is not available in 21Vianet offering";break}
+                default         {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
+            }
+            #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
-        # If no error, try test command
-        if ($ConnectError) {
-            $Connect = $False
-            $Command = $False
-        }
-        else { 
-            $Connect = $true
-            # Cmdlet that can be run by anyone
-            if (Get-CsOnlineUser -ResultSize 1) {
-            # Cmdlet that can be run by admin
-            #if (Get-CsTenantFederationConfiguration) {
-                $Command = $True
-            } 
-            else {
+            # If no error, try test command
+            if ($ConnectError) {
+                $Connect = $False
                 $Command = $False
             }
-        }
+            else { 
+                $Connect = $true
+                # Cmdlet that can be run by anyone
+                if (Get-CsOnlineUser -ResultSize 1) {
+                # Cmdlet that can be run by admin
+                #if (Get-CsTenantFederationConfiguration) {
+                    $Command = $True
+                } 
+                else {
+                    $Command = $False
+                }
+            }
 
-        $Connections += New-Object -TypeName PSObject -Property @{
-            Name="Teams"
-            Connected=$Connect
-            ConnectErrors=$ConnectError
-            TestCommand=$Command
-            TestCommandErrors=$CommandError
+            $Connections += New-Object -TypeName PSObject -Property @{
+                Name="Teams"
+                Connected=$Connect
+                ConnectErrors=$ConnectError
+                TestCommand=$Command
+                TestCommandErrors=$CommandError
+            }
         }
     }
 
