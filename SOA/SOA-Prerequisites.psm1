@@ -125,7 +125,7 @@ function Get-SharePointAdminUrl
         $url = "https://" + $SPOAdminDomain
     }
     else {
-        $tenantName = (Get-InitialDomain -split ".onmicrosoft")[0]
+        $tenantName = ((Get-InitialDomain) -split ".onmicrosoft")[0]
         
         switch ($CloudEnvironment) {
             "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
@@ -1165,8 +1165,77 @@ Function Test-Connections {
     #$userUPN = Read-Host -Prompt "What is the UPN of the admin account that you will be signing in with for connection validation and with sufficient privileges to register the Microsoft Entra enterprise application"
 
     <#
+    
+        Graph PowerShell SDK
+
+    #>
+    $connectToGraph = $false
+    $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+    # Teams and SPO connections are dependent on Graph connection to get initial domain
+    if ($Bypass -notcontains 'Teams' -or $Bypass -notcontains 'SPO' ) {
+        if ($Bypass -contains 'Graph') {
+            Write-Warning -Message "Even though Graph is bypassed, Teams and/or SPO are not bypassed and require Graph. Therefore, the Graph connection will still occur."
+            $connectToGraph = $true
+        }
+    }
+    if ($Bypass -notcontains 'Graph') {
+        $connectToGraph = $true
+    }
+    if ($connectToGraph -eq $true) {
+        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
+        switch ($CloudEnvironment) {
+            "Commercial"   {$cloud = 'Global'}
+            "USGovGCC"     {$cloud = 'Global'}
+            "USGovGCCHigh" {$cloud = 'USGov'}
+            "USGovDoD"     {$cloud = 'USGovDoD'}
+            "Germany"      {$cloud = 'Germany'}
+            "China"        {$cloud = 'China'}
+        }
+        if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
+            Write-Host "$(Get-Date) Connecting to Microsoft Graph with delegated authentication..."
+            if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
+            $connCount = 0
+            $connLimit = 5
+            do {
+                try {
+                    $connCount++
+                    Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
+                    # User read is sufficient for using the organization API to get the domain for the Teams/SPO connections
+                    Connect-MgGraph -Scopes 'User.Read' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
+                }
+                catch {
+                    Write-Verbose $_
+                    Start-Sleep 1
+                }
+            }
+            until ($null -ne (Get-MgContext) -or $connCount -eq $connLimit)
+            if ($null -eq (Get-MgContext)) {
+                Write-Error -Message "Unable to connect to Graph. Skipping dependent connection tests."
+                $Connect = $False
+            }
+            else {
+                $Connect = $True
+                $GraphSDKConnect = $true
+            }
+            if ($Connect -eq $true) {
+                $me = Invoke-MgGraphRequest -Method GET -Uri '/v1.0/me' -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError
+                if ($me.userPrincipalName) {$Command = $true} else {$Command = $false}
+            }
+        }
+
+        $Connections += New-Object -TypeName PSObject -Property @{
+            Name="GraphSDK"
+            Connected=$Connect
+            ConnectErrors=$ConnectError
+            TestCommand=$Command
+            TestCommandErrors=$CommandError
+        }
+    }
+
+    <#
         
-        AD PowerShell Version 1. Aka MSOL
+        AAD PowerShell v1 (MSOL)
         
     #>
     If($Bypass -notcontains "MSOL") {
@@ -1345,13 +1414,13 @@ Function Test-Connections {
         Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
         $InitialDomain = Get-InitialDomain
         switch ($CloudEnvironment) {
-            "Commercial"    {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovGCC"      {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovGCCHigh"  {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
-            "USGovDoD"      {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue;break}
+            "Commercial"    {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
+            "USGovGCC"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
+            "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
+            "USGovDoD"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
             #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
             "China"         {Write-Host "Teams is not available in 21Vianet offering";break}
-            default         {Connect-MicrosoftTeams -TenantId $InitialDomain -ErrorVariable ConnectError -ErrorAction:SilentlyContinue}
+            default         {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
         }
         #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
@@ -2095,8 +2164,10 @@ Function Install-SOAPrerequisites
 
     If($EntraAppCheck -eq $True) {
 
-        # When EntraAppOnly is run by itself, this script will not yet be connected to Microsoft Entra
-        Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
+        # When EntraAppOnly is used, this script may not be connected to Microsoft Graph
+        if (-not(Get-Module -Name Microsoft.Graph.Applications)) {
+            Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
+        }
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
