@@ -45,12 +45,12 @@ In order to install the SOA module and run the prerequisites script, you must ha
      `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
       
 ### Permissions
-* Local admin (running PowerShell as an adminisrator) is not required except if the Active Directory module needs to be installed (see [below](#active-directory-module)).
-* For the connections to each workload, the account used to sign in does not require an admin role.
-* To be able to create and test the application:
-      * For the application to be created, any user in the tenant can be used, by default. If this setting has been disabled, the account used must have the Global Administrator, Application Administrator, Cloud Application Administraor, or Application Developer role.
-      * To be able to grant admin consent to the application, an account with Global Administrator or Privileged Role Administrator role is required. (The account used to create the application can be different than the account used to grant consent.)
-      * To test the application, the user must have the Application Administrator or Cloud Application Administrator role, or be assigned the owner role in the application.
+* Local admin (running PowerShell as an adminisrator) is not required unless the Active Directory module needs to be installed (see [below](#active-directory-module)).
+* The following delegated scopes are required for the user installing the prerequisites (and will prompt the user for consent, which does not require granting on behalf of the entire organisation):
+   * **Application.ReadWrite.All** (The least-privilege scope for creating an app registration in the tenant.)
+   * **Organization.Read.All** (The least-privilege common scope for getting the licenses in the tenant and the initial tenant domain.)
+* To be able to grant admin consent for the app registration, an account with Global Administrator or Privileged Role Administrator role is required. (The account used to create the app registration can be different than the account used to grant consent.)
+* For testing the connections to each workload, the account used to sign in does not require an admin role.
 
 ### Collection machine
 The collection machine can be any workstation or server, physical or virtual, that can connect via PowerShell to Microsoft Entra ID, Microsoft Graph, Exchange Online, Security & Compliance Center, SharePoint Online, Microsoft Teams, and Power Platform. It does not need to be AD- or Microsoft Entra-joined unless you have Conditional Access policies requiring it for these connections.
@@ -95,34 +95,33 @@ If directory synchronisation is used and the Active Directory module is not inst
 
 An app registration is required to use Microsoft Graph and other APIs. Registration and configuration of this application is performed by the prerequisites script.
 
-The permission scopes for the application are the following:
-#### Microsoft Graph API:
-* **Application.ReadWrite.OwnedBy** (Update applications owned by the application. This allows the application to remove its own client secret when the prerequisites validation and data collection are complete.)
-* **AuditLog.Read.All** (Get sign-in activity for user and guest accounts.)
-* **DeviceManagementConfiguration.Read** (Get Intune configuration policies, if applicable.)
-* **Directory.Read.All** (Get subscriptions in the tenant and sign-in activity for user and guest accounts. Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)
-* **IdentityRiskEvent.Read.All** (Get identity risk events raised by Microsoft Entra ID Protection.)
-* **IdentityRiskyUser.Read.All** (Get identity risk events raised by Microsoft Entra ID Protection. Both this scope and IdentityRiskEvent.Read.All are required to get risk events.)
-* **OnPremDirectorySynchronization.Read.All** (Get Microsoft Entra directory synchronization settings.)
-* **Policy.Read.All** (Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.)
-* **PrivilegedAccess.Read.AzureADGroup** (Get Privileged Identity Management roles assigned to groups, if applicable.)
-* **RoleManagement.Read.All** (Get Privileged Identity Management roles assigned to users, if applicable.)
-* **SecurityEvents.Read.All** (Get active security events within your tenant.)
-* **SecurityIncident.Read.All** (Get Defender security incidents.)
-#### Dynamics CRM API:
-* **user_impersonation** (Get Dataverse settings.)
-#### Windows Defender ATP
-* **AdvancedQuery.Read.All** (For organisations with Microsoft Defender for Endpoint, get health alerts.)
+The permission scopes used by the app registration:
+|API|Scope|Type|Usage|
+|---|---|---|---|
+|Graph|Application.ReadWrite.OwnedBy|Application|Update app registrations owned by the application (aka service principal). This allows the application to remove its own client secret when the prerequisites validation and data collection are complete.|
+|Graph|AuditLog.Read.All|Application|Get sign-in activity for user and guest accounts.|
+|Graph|DeviceManagementConfiguration.Read|Application|Get Intune configuration policies, if applicable.|
+|Graph|Directory.Read.All|Application|Get subscriptions in the tenant and sign-in activity for user and guest accounts. (Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)|
+|Graph|IdentityRiskEvent.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection.|
+|Graph|IdentityRiskyUser.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection. (Both this scope and IdentityRiskEvent.Read.All are required to get risk events.)|
+|Graph|OnPremDirectorySynchronization.Read.All|Application|Get Microsoft Entra directory synchronization settings.|
+Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
+|Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.
+|Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
+|Graph|SecurityEvents.Read.All|Application|Get active security events within your tenant.
+|Graph|SecurityIncident.Read.All|Application|Get Defender security incidents.
+|Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
+|Windows Defender ATP|AdvancedQuery.Read.All|Application|For organisations with Microsoft Defender for Endpoint, get health alerts.|
 
 ### App registration security
 
-Being a security-related assessment, we are conscious of the security of the application created for it, which is why the following security considerations are made:
-* The application is scoped to specific activities, as indicated above, using a least-privilege model. All scopes are read-only (except for OwnedBy so it can remove its client secret) and grant access only to configuration settings, not any user-generated data.
+As a security-related assessment, we are conscious of the security of the app registration and enterprise application created for it, which is why the following security considerations are made:
+* The app registration is scoped to specific activities, as indicated above, using a least-privilege model. All scopes are read-only (except for OwnedBy so it can remove its client secret) and grant access only to configuration settings, not any user-generated data.
 * Client secrets
-   * A client secret (a password randomly generated by Microsoft Entra) is created by the installation script for validating the configuration of the application. It is set to expire after 48 hours, but is removed from the application when the validation is complete.
-   * When the collection script is executed, a client secret (also set to expire after 48 hours) is created to be able to retrieve the necessary data, but is removed from the application when the collection script is complete.
-   * In each scenario, the client secret is stored only in memory by the script and is not accessible upon completion.
+   * A client secret (a password randomly generated by Microsoft Entra) is created by the installation script for validating the configuration of the app registration. It is set to expire after 48 hours, but is removed from the app registration when the validation is complete.
+   * When the collection script is executed, a client secret (also set to expire after 48 hours) is created to be able to retrieve the necessary data, but is removed from the app registration when the collection script is complete.
+   * In each scenario, the client secret is stored only in memory by the script and is no longer accessible after completion.
 
-### Removal of application
+### Removal of app registration
 
-You may remove the application at the conclusion of the engagement. It is not necessary, however, because it cannot be used without a valid client secret, which is removed when the collection script completes. It is important that you **do not** remove the application between the prerequisites installation and the data collection.
+You may remove the app registration at the conclusion of the engagement. It is not necessary, however, because it cannot be used without a valid client secret, which is removed when the collection script completes. It is important that you **do not** remove the app registration (or its enterprise application) between the prerequisites installation and the data collection.
