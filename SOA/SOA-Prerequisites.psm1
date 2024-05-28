@@ -847,6 +847,9 @@ function Get-LicenseStatus {
             # SKUs that start with strings include MDE to be able to use its advanced hunting API
             $targetSkus = @('DEFENDER_ENDPOINT','IDENTITY','M365_G3_R','M365_G5_GCC','M365_S','M365EDU_A3_STUD','M365EDU_A3_F''M365EDU_A5_STUD','M365EDU_A5_F','MDATP','Microsoft 365 A3 Suite','Microsoft_365_E','Microsoft_D','Microsoft_Teams_Rooms_Pro_F','Microsoft_Teams_Rooms_Pro_G','O365_w/o Teams Bundle_M','O365_w/o_Teams_Bundle_M','SPE_','WIN_','WIN10_ENT_A5','WIN10_VDA_E5','WINE5_G')
         }
+        AADP2 {
+            $targetSkus = @('AAD_PREMIUM_P2','DEVELOPERPACK_E5','EMSPREMIUM','IDENTITY_THREAT_PROTECTION','M365_G5','M365_SEC','M365EDU_A5','Microsoft_365_E5','SPE_E5','SPE_F5')
+        }
         default {
             Write-Error -Message "$(Get-Date) Invalid license type specified"
             return $false
@@ -1201,8 +1204,9 @@ Function Test-Connections {
                 try {
                     $connCount++
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
-                    # User read is sufficient for using the organization API to get the domain for the Teams/SPO connections
-                    Connect-MgGraph -Scopes 'User.Read' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
+                    # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
+                    # Using Organization.Read.All because that is the least-common scope for getting licenses in the app check
+                    Connect-MgGraph -Scopes 'Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
                 }
                 catch {
                     Write-Verbose $_
@@ -2183,7 +2187,8 @@ Function Install-SOAPrerequisites
             "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
-        if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
+        $mgContext = Get-MgContext
+        if ($mgContext.Scopes -notcontains 'Application.ReadWrite.All' -or $mgContext.Scopes -notcontains 'Organization.Read.All') {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -2192,7 +2197,7 @@ Function Install-SOAPrerequisites
                 try {
                     $connCount++
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
-                    Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
                 }
                 catch {
                     Write-Verbose $_
@@ -2265,7 +2270,8 @@ Function Install-SOAPrerequisites
                 # Set up the correct Entra App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
                 Write-Host "$(Get-Date) Reconnecting to Graph with delegated authentication..."
-                Connect-MgGraph -Scopes 'Application.ReadWrite.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                # No scopes need to be explicitly requested here because the user will have already consented to them in the previous delegated connection
+                Connect-MgGraph -Environment $cloud -ContextScope "Process" | Out-Null
                 If((Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment) -eq $True) {
                     # Perform check again after setting permissions
                     $ConnCount = 0
