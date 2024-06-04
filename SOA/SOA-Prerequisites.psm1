@@ -639,7 +639,7 @@ Function Invoke-Consent {
     # Need to use the Application ID, not Object ID
     $Location = "$AuthLocBase/common/adminconsent?client_id=$($App.AppId)&state=12345&redirect_uri=https://o365soa.github.io/soa/"
     Write-Important
-    Write-Host "In 10 seconds, a page in the default browser will load and ask you to grant consent to Security Optimization Assessment."
+    Write-Host "In 10 seconds, a page in the default browser will load and ask you to grant consent to Microsoft Security Assessment."
     write-Host "You must sign in with an account that has Global Administrator or Privileged Role Administrator role."
     Write-Host "After granting consent, a green OK message will appear; you can then close the browser page."
     Write-Host ""
