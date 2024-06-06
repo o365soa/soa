@@ -1626,7 +1626,7 @@ Function Get-RequiredAppPermissions {
             ID="bb70e231-92dc-4729-aff5-697b3f04be95"
             Name="OnPremDirectorySynchronization.Read.All"
             Type='Role'
-            Resource="00000003-0000-0000-c000-000000000000" # Graph 
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
         }
     }
 
@@ -1641,10 +1641,10 @@ Function Get-RequiredAppPermissions {
     if ($HasMDELicense -eq $true -and $MDEAvailable -eq $true) {
         Write-Verbose "Adding Defender for Endpoint role to App"
         $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID="93489bf5-0fbc-4f2d-b901-33f2fe08ff05"
-            Name="AdvancedQuery.Read.All"
+            ID="dd98c7f5-2d42-42d3-a0e4-633161547251"
+            Name="ThreatHunting.Read.All"
             Type='Role'
-            Resource="fc780465-2017-40d4-a0c5-307022471b92" # WindowsDefenderATP
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
         }
     }
 
@@ -2013,7 +2013,7 @@ Function Install-SOAPrerequisites
 
     #>
     Write-Host ""
-    Write-Host "This scipt is used to install and validate the prerequisites for running the data collection"
+    Write-Host "This script is used to install and validate the prerequisites for running the data collection"
     Write-Host "for one of the Microsoft security assessments offered via Microsoft Services."
     Write-Host "At the conclusion of this script running successfully, a file named SOA-PreCheck.json will be created."
     Write-Host "This file should be sent to the engineer who will be delivering the assessment."
