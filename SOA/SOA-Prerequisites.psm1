@@ -369,17 +369,20 @@ Function Set-EntraAppPermission {
     foreach($ResourceRolesGrouping in ($Roles | Group-Object Resource)) {
 
         # Define the resource
-        $Resource = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphRequiredResourceAccess
-        $Resource.ResourceAppId = $ResourceRolesGrouping.Name
+        $Resource = @{}
 
         # Add the permissions
         ForEach($Role in $($ResourceRolesGrouping.Group)) {
             Write-Verbose "$(Get-Date) Set-EntraAppPermissions Add $($Role.Type) $($Role.Name) ($($Role.ID)) in $CloudEnvironment cloud"
-            $Perm = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphResourceAccess
-            $Perm.Id = $Role.ID
-            $Perm.Type = $Role.Type
-            $Resource.ResourceAccess += $Perm
+            $ResourceAccess = @()
+            $Perm = @{}
+            $Perm.id = $Role.ID
+            $Perm.type = $Role.Type
+            $ResourceAccess += $Perm
+
+            $Resource.resourceAccess += $ResourceAccess
         }
+        $Resource.resourceAppId = $ResourceRolesGrouping.Name
 
         # Add to the list of required access
         $RequiredResources += $Resource
@@ -387,7 +390,11 @@ Function Set-EntraAppPermission {
     }
     
     try {
-        Update-MgApplication -ApplicationId $App.Id -RequiredResourceAccess $RequiredResources
+        $Params = @{
+            'requiredResourceAccess' = $RequiredResources
+        }
+
+        Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($App.Id)" -Body ($Params | ConvertTo-Json -Depth 5)
         $PermissionSet = $True
     }
     catch {
@@ -694,10 +701,7 @@ Function Install-EntraApp {
 
     $EntraApp = Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications" -Body $Params
 
-    Write-Host "ID: $($EntraApp.Id), AppId: $($EntraApp.AppId)"
-
     # Set up the correct permissions
-    Start-Sleep 5
     Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
 
     # Add service principal (enterprise app) as owner of its app registration
