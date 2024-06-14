@@ -110,6 +110,7 @@ Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as 
 |Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
 |Graph|SecurityEvents.Read.All|Application|Get active security events within your tenant.
 |Graph|SecurityIncident.Read.All|Application|Get Defender security incidents.
+|Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
 |Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Endpoint, get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
 
