@@ -356,7 +356,7 @@ Function Set-EntraAppPermission {
     $PermissionSet = $False
     $ConsentPerformed = $False
 
-    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed -HasMDILicense $MDILicensed -HasATPP2License $ATPP2Licensed
 
     <#
     
@@ -440,7 +440,7 @@ Function Invoke-AppPermissionCheck
         [Switch]$NewPermission
     )
 
-    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed -HasMDILicense $MDILicensed -HasATPP2License $ATPP2Licensed
 
     # In the event of a NewPermission, $MaxTime should be longer to prevent race conditions
     If($NewPermission)
@@ -543,7 +543,7 @@ Function Invoke-AppTokenRolesCheck {
         "China"        {$GraphResource = "https://microsoftgraph.chinacloudapi.cn/"}
     }
 
-    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed -HasMDILicense $MDILicensed -HasATPP2License $ATPP2Licensed
 
     # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
     $MaxTime = 300
@@ -612,7 +612,7 @@ Function Invoke-AppTokenRolesCheckV2 {
         [string]$CloudEnvironment
     )
 
-    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed
+    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed -HasMDILicense $MDILicensed -HasATPP2License $ATPP2Licensed
 
     $ActiveScopes = (Get-MgContext).Scopes
     $MissingRoles = @()
@@ -1557,7 +1557,9 @@ Function Get-RequiredAppPermissions {
     param
     (
     [string]$CloudEnvironment="Commercial",
-    $HasMDELicense
+    $HasMDELicense,
+    $HasMDILicense,
+    $HasATPP2License
     )
 
     <#
@@ -1669,8 +1671,8 @@ Function Get-RequiredAppPermissions {
         "Germany"      {$MDEAvailable=$false;break}
         "China"        {$MDEAvailable=$false}
     }
-    if ($HasMDELicense -eq $true -and $MDEAvailable -eq $true) {
-        Write-Verbose "Adding Defender for Endpoint role to App"
+    if (($HasMDELicense -eq $true -and $MDEAvailable -eq $true) -or $HasATPP2License -eq $true) {
+        Write-Verbose "Adding role for Advanced Hunting to App"
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="dd98c7f5-2d42-42d3-a0e4-633161547251"
             Name="ThreatHunting.Read.All"
@@ -2286,6 +2288,9 @@ Function Install-SOAPrerequisites
 
             $script:MDILicensed = Get-LicenseStatus -LicenseType MDI
             Write-Verbose "$(Get-Date) Get-LicenseStatus MDI License found: $($script:MDILicensed)"
+
+            $script:ATPP2Licensed = Get-LicenseStatus -LicenseType ATPP2
+            Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $($script:ATPP2Licensed)"
 
             # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesnt
             $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
