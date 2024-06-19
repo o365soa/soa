@@ -142,7 +142,7 @@ function Get-SharePointAdminUrl
 Function Reset-SOAAppSecret {
     <#
     
-        This function creates a new secret for the application when the app is retrieved using Get-AzureADApplication
+        This function creates a new secret for the application when the app is retrieved using Invoke-MgGraphRequest from the Microsoft.Graph.Authentication module
     
     #>
     Param (
@@ -150,10 +150,16 @@ Function Reset-SOAAppSecret {
         $Task
     )
 
-    # Provision a short lived credential +48 hrs.
-    $clientsecret = New-AzureADApplicationPasswordCredential -ObjectId $App.ObjectId -EndDate (Get-Date).AddDays(2) -CustomKeyIdentifier "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
+    # Provision a short lived credential (48 hours)
+    $Params = @{
+        passwordCredential = @{
+            displayName = "$Task on $(Get-Date -Format "dd-MMM-yyyy")"
+            endDateTime = (Get-Date).ToUniversalTime().AddDays(2).ToString("o")
+        }
+    }
+    $Response = Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications/$($App.Id)/addPassword" -body $Params
 
-    Return $clientsecret.Value
+    Return $Response.SecretText
 }
 Function Reset-SOAAppSecretv2 {
     <#
@@ -171,14 +177,17 @@ Function Reset-SOAAppSecretv2 {
 }
 
 function Remove-SOAAppSecret {
-    # Removes any client secrets associated with the application when the app is retrieved using Get-AzureADApplication
-    param ($app)
+    # Removes any client secrets associated with the application when the app is retrieved using Invoke-MgGraphRequest from the Microsoft.Graph.Authentication module
+    param ()
 
-    $secrets = Get-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId
+    # Get application again from Entra to be sure it includes any added secrets
+    $App = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
+
+    $secrets = $App.passwordCredentials
     foreach ($secret in $secrets) {
         # Suppress errors in case a secret no longer exists
         try {
-            Remove-AzureADApplicationPasswordCredential -ObjectId $app.ObjectId -KeyId $secret.KeyId
+            Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications/$($App.appId)/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
         }
         catch {}
     }
@@ -360,17 +369,20 @@ Function Set-EntraAppPermission {
     foreach($ResourceRolesGrouping in ($Roles | Group-Object Resource)) {
 
         # Define the resource
-        $Resource = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphRequiredResourceAccess
-        $Resource.ResourceAppId = $ResourceRolesGrouping.Name
+        $Resource = @{}
 
         # Add the permissions
         ForEach($Role in $($ResourceRolesGrouping.Group)) {
             Write-Verbose "$(Get-Date) Set-EntraAppPermissions Add $($Role.Type) $($Role.Name) ($($Role.ID)) in $CloudEnvironment cloud"
-            $Perm = New-Object -TypeName Microsoft.Graph.PowerShell.Models.MicrosoftGraphResourceAccess
-            $Perm.Id = $Role.ID
-            $Perm.Type = $Role.Type
-            $Resource.ResourceAccess += $Perm
+            $ResourceAccess = @()
+            $Perm = @{}
+            $Perm.id = $Role.ID
+            $Perm.type = $Role.Type
+            $ResourceAccess += $Perm
+
+            $Resource.resourceAccess += $ResourceAccess
         }
+        $Resource.resourceAppId = $ResourceRolesGrouping.Name
 
         # Add to the list of required access
         $RequiredResources += $Resource
@@ -378,7 +390,11 @@ Function Set-EntraAppPermission {
     }
     
     try {
-        Update-MgApplication -ApplicationId $App.Id -RequiredResourceAccess $RequiredResources
+        $Params = @{
+            'requiredResourceAccess' = $RequiredResources
+        }
+
+        Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($App.Id)" -Body ($Params | ConvertTo-Json -Depth 5)
         $PermissionSet = $True
     }
     catch {
@@ -451,7 +467,7 @@ Function Invoke-AppPermissionCheck
         while ($rCounter -le 5) {
             try {
                 Write-Verbose "$(Get-Date) Getting application from Entra (attempt #$rCounter)"
-                $App = Get-MgApplication -ApplicationId $appId -ErrorAction Stop
+                $App = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$appId" -ErrorAction Stop
                 break
             }
             catch {
@@ -672,20 +688,31 @@ Function Install-EntraApp {
 
     # Create the Entra application
     Write-Verbose "$(Get-Date) Install-EntraApp Installing App"
-    $EntraApp = New-MgApplication -DisplayName "Microsoft Security Assessment" `
-        -Web @{'RedirectUris'=@("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")} `
-        -PublicClient @{'RedirectUris'='https://login.microsoftonline.com/common/oauth2/nativeclient'} `
-        -SignInAudience AzureADMyOrg
+    $Params = @{
+        'displayName' = 'Microsoft Security Assessment'
+        'SignInAudience' = 'AzureADMyOrg'
+        'web' = @{
+            'redirectUris' = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
+        }
+        'publicClient' = @{
+            'redirectUris' = @("https://login.microsoftonline.com/common/oauth2/nativeclient")
+        }
+    }
+
+    $EntraApp = Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications" -Body $Params
 
     # Set up the correct permissions
     Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
 
     # Add service principal (enterprise app) as owner of its app registration
-    $appSp = Get-MgServicePrincipal -Filter "appId eq '$($EntraApp.AppId)'"
-    New-MgApplicationOwnerByRef -ApplicationId $EntraApp.Id -OdataId "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+    $appSp = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
+    $Params = @{
+        '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+    }
+    Invoke-MgGraphRequest -Method POST -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
 
     # Return the newly created application
-    Return (Get-MgApplication -ApplicationId $EntraApp.Id)
+    Return (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$($EntraApp.Id)")
     
 }
 
@@ -1751,13 +1778,13 @@ function Get-SOAEntraApp {
     )
 
     # Determine if Microsoft Entra application exists
-    # CountVariable is mandatory when using Eventual consistency level, otherwise no data is returned but without any error
-    $EntraApp = Get-MgApplication -Filter "web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')" -ConsistencyLevel Eventual -CountVariable CountVar
+    # Retrieving the Count is mandatory when using Eventual consistency level, otherwise a HTTP/400 error is returned
+    $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
 
     if ($EntraApp -and $RemoveExistingEntraApp -and $DoNotRemediate -eq $false) {
         Write-Host "$(Get-Date) Removing existing Microsoft Entra application..."
         try {
-            Remove-MgApplication -ApplicationId $EntraApp.Id
+            Invoke-MgGraphRequest -Method DELETE -Uri "/v1.0/applications/$($EntraApp.Id)"
             $EntraApp = $null
         }
         catch {
@@ -1774,20 +1801,27 @@ function Get-SOAEntraApp {
     }
     else {
         # Check whether the application name should be updated
-        if ($EntraApp.DisplayName -eq 'Office 365 Security Optimization Assessment') {
+        if ($EntraApp.displayName -eq 'Office 365 Security Optimization Assessment') {
             Write-Verbose "$(Get-Date) Renaming the display name of the Microsoft Entra application..."
-            Update-MgApplication -ApplicationId $EntraApp.Id -DisplayName 'Microsoft Security Assessment'
+            $Body = @{'displayName' = 'Microsoft Security Assessment'}
+            Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($EntraApp.Id)" -Body $Body
         }
 
         # Check if public client URI is set
-        $pcRUrl = 'https://login.microsoftonline.com/common/oauth2/nativeclient'
+        $pcRUrl = @('https://login.microsoftonline.com/common/oauth2/nativeclient')
         if ($EntraApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
                 Write-Verbose "$(Get-Date) Setting Microsoft Entra application public client redirect URI..."
-                Update-MgApplication -ApplicationId $EntraApp.Id -PublicClient @{'RedirectUris'=$pcRUrl}
+                $Params = @{
+                    'publicClient' = @{
+                        'redirectUris' = $pcRUrl
+                    }
+                }
+                Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($EntraApp.Id)" -Body $Params
+                
                 # Get app again so public client is set for checking DoNotRemediate in calling function
-                $EntraApp = Get-MgApplication -ApplicationId $EntraApp.Id
+                $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
             }
         }
         # Check if correct web redirect URIs are set
@@ -1795,17 +1829,26 @@ function Get-SOAEntraApp {
         if (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri) {
             if ($DoNotRemediate -eq $false) {
                 Write-Verbose "$(Get-Date) Setting Microsoft Entra application web redirect URIs..."
-                Update-MgApplication -ApplicationId $EntraApp.Id -Web @{'RedirectUris'=$webRUri}
-                $EntraApp = Get-MgApplication -ApplicationId $EntraApp.Id
+                $Params = @{
+                    'web' = @{
+                        'redirectUris' = $webRUri
+                    }
+                }
+                Invoke-MgGraphRequest PATCH "/v1.0/applications/$($EntraApp.Id)" -Body $Params
+
+                $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
             }
         }
         # Check if service principal (enterprise app) is owner of its app registration
-        $appOwners = Get-MgApplicationOwner -ApplicationId $EntraApp.Id
-        $appSp = Get-MgServicePrincipal -Filter "appId eq '$($EntraApp.AppId)'"
+        $appOwners = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$($EntraApp.Id)/owners" -OutputType PSObject).Value
+        $appSp = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
         if ($appOwners.Id -notcontains $appSp.Id) {
             if ($DoNotRemediate -eq $false) {
                 Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
-                New-MgApplicationOwnerByRef -ApplicationId $EntraApp.Id -OdataId "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+                $Params = @{
+                    '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+                }
+                Invoke-MgGraphRequest -Method POST -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
             }
         }  
     }
@@ -2267,7 +2310,7 @@ Function Install-SOAPrerequisites
             }
 
             # Reset secret
-            $clientsecret = Reset-SOAAppSecretv2 -App $EntraApp -Task "Prereq"
+            $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
             Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
             Start-Sleep 10
 
@@ -2356,20 +2399,8 @@ Function Install-SOAPrerequisites
                     Pass=$True
                 }
 
-                if (Get-MgApplication -Top 1) {
-                    $CheckResults += New-Object -Type PSObject -Property @{
-                        Check="Graph SDK Command"
-                        Pass=$True
-                    }
-                } 
-                else {
-                    $CheckResults += New-Object -Type PSObject -Property @{
-                        Check="Graph SDK Command"
-                        Pass=$False
-                    }
-                }
                 # Remove client secret
-                Remove-SOAAppSecretv2 -app $EntraApp
+                Remove-SOAAppSecret
                 # Disconnect
                 Disconnect-MgGraph | Out-Null
             }
