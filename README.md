@@ -111,7 +111,7 @@ Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as 
 |Graph|SecurityEvents.Read.All|Application|Get active security events within your tenant.
 |Graph|SecurityIncident.Read.All|Application|Get Defender security incidents.
 |Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
-|Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Endpoint, get health alerts.|
+|Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2 to get active AIR investigations, or organisations with Microsoft Defender for Endpoint to get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
 
 ### App registration security
