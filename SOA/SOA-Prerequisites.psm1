@@ -283,60 +283,6 @@ Function Get-MSALAccessToken {
     return $token
 }
 
-Function Invoke-GraphTest {
-    <#
-    
-        Performs a test against Graph by pulling secure scores
-    
-    #>
-    Param (
-        $EntraApp,
-        $Secret,
-        $TenantDomain,
-        [string]$CloudEnvironment
-    )
-
-    $Success = $False
-    $RunError = $Null
-
-    switch ($CloudEnvironment) {
-        "Commercial"   {$Resource = "https://graph.microsoft.com/";break}
-        "USGovGCC"     {$Resource = "https://graph.microsoft.com/";break}
-        "USGovGCCHigh" {$Resource = "https://graph.microsoft.us/";break}
-        "USGovDoD"     {$Resource = "https://dod-graph.microsoft.us/";break}
-        "Germany"      {$Resource = "https://graph.microsoft.de/";break}
-        "China"        {$Resource = "https://microsoftgraph.chinacloudapi.cn/"}
-    }
-
-    switch ($CloudEnvironment) {
-        "Commercial"   {$Base = "https://graph.microsoft.com";break}
-        "USGovGCC"     {$Base = "https://graph.microsoft.com";break}
-        "USGovGCCHigh" {$Base = "https://graph.microsoft.us";break}
-        "USGovDoD"     {$Base = "https://dod-graph.microsoft.us";break}
-        "Germany"      {$Base = "https://graph.microsoft.de";break}
-        "China"        {$Base = "https://microsoftgraph.chinacloudapi.cn"}
-    }
-    $Uri = "$Base/beta/security/secureScores?`$top=1"
-
-    $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $EntraApp.AppId -Secret $Secret -Resource $Resource -CloudEnvironment $CloudEnvironment
-    $headerParams = @{'Authorization'="$($Token.TokenType) $($Token.AccessToken)"}
-
-    $Result = (Invoke-WebRequest -UseBasicParsing -Headers $headerParams -Uri $Uri -ErrorAction:SilentlyContinue -ErrorVariable:RunError)
-
-    If($Result.StatusCode -eq 200) {
-        $Success = $True
-    } Else {
-        $Success = $False
-    }
-
-    Return New-Object -TypeName PSObject -Property @{
-        Check="Entra App Graph Test"
-        Pass=$Success
-        Debug=$RunError
-    }
-
-}
-
 Function Set-EntraAppPermission {
     <#
     
@@ -759,7 +705,8 @@ Function Get-ModuleStatus {
 
     # Check version in PS Gallery, limit MSOnline version because of compatibility bug with Graph SDK
     if ($ModuleName -eq 'MSOnline') {
-        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.1.183.66)
+        #$PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue -MaximumVersion 1.1.183.66)
+        $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
     }
     else {
         $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
@@ -922,7 +869,8 @@ Function Install-ModuleFromGallery {
 
     # Limit MSOnline version because of compatibility issue with Graph SDK
     if ($Module -eq 'MSOnline') {
-        Install-Module $Module -Force -Scope:$Scope -AllowClobber -MaximumVersion 1.1.183.66
+        #Install-Module $Module -Force -Scope:$Scope -AllowClobber -MaximumVersion 1.1.183.66
+        Install-Module $Module -Force -Scope:$Scope -AllowClobber
     } 
     else {
         Install-Module $Module -Force -Scope:$Scope -AllowClobber
@@ -1130,7 +1078,6 @@ Function Invoke-SOAModuleCheck {
     }
     If($Bypass -notcontains "Graph") {
         $RequiredModules += "Microsoft.Graph.Authentication"
-        $RequiredModules += "Microsoft.Graph.Applications"
     }
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
@@ -1217,7 +1164,6 @@ Function Test-Connections {
     }
     if ($connectToGraph -eq $true) {
         Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
-        Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
@@ -1577,12 +1523,6 @@ Function Get-RequiredAppPermissions {
 
     # Microsoft Graph
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="bf394140-e372-4bf9-a898-299cfc7564e5"
-        Name="SecurityEvents.Read.All"
-        Type='Role'
-        Resource="00000003-0000-0000-c000-000000000000" # Graph    
-    }
-    $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="dc5007c0-2d7d-4c42-879c-2dab87571379"
         Name="IdentityRiskyUser.Read.All"
         Type='Role'
@@ -1622,12 +1562,6 @@ Function Get-RequiredAppPermissions {
         "USGovGCCHigh" {$EnvironmentRoleID = "73d442ea-eff8-40b5-a216-87616d77e983";break}
         "USGovDoD"     {$EnvironmentRoleID = "73d442ea-eff8-40b5-a216-87616d77e983";break}
         Default        {$EnvironmentRoleID = "45cc0394-e837-488b-a098-1918f48d186c"}
-    }
-    $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID=$EnvironmentRoleID
-        Name="SecurityIncident.Read.All"
-        Type='Role'
-        Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="78ce3f0f-a1ce-49c2-8cde-64b5c0896db4"
@@ -2243,9 +2177,6 @@ Function Install-SOAPrerequisites
     If($EntraAppCheck -eq $True) {
 
         # When EntraAppOnly is used, this script may not be connected to Microsoft Graph
-        if (-not(Get-Module -Name Microsoft.Graph.Applications)) {
-            Import-PSModule -ModuleName Microsoft.Graph.Applications -Implicit $UseImplicitLoading
-        }
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
@@ -2384,10 +2315,7 @@ Function Install-SOAPrerequisites
                 Pass=$AppTest.Token
             }
 
-            # Perform Graph Check for calls with self-managed token
             Write-Host "$(Get-Date) Performing Graph Test..."
-            $CheckResults += Invoke-GraphTest -EntraApp $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment
-
             # Perform Graph check using credentials on the App
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null

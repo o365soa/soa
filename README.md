@@ -17,9 +17,7 @@ The latest version of the following PowerShell modules are installed:
 * SharePoint Online
 * Microsoft Teams
 * Power Apps admin
-* From the Microsoft Graph PowerShell SDK: 
-  * Microsoft.Graph.Authentication
-  * Microsoft.Graph.Applications
+* Microsoft.Graph.Authentication from the Microsoft Graph PowerShell SDK
 * Active Directory
 
 Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
@@ -108,8 +106,6 @@ The permission scopes used by the app registration:
 Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
 |Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.
 |Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
-|Graph|SecurityEvents.Read.All|Application|Get active security events within your tenant.
-|Graph|SecurityIncident.Read.All|Application|Get Defender security incidents.
 |Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
 |Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2 to get active AIR investigations, or organisations with Microsoft Defender for Endpoint to get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
