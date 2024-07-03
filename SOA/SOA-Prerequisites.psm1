@@ -187,7 +187,7 @@ function Remove-SOAAppSecret {
     foreach ($secret in $secrets) {
         # Suppress errors in case a secret no longer exists
         try {
-            Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications/$($App.appId)/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
+            Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($App.appId)`')/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
         }
         catch {}
     }
@@ -709,7 +709,7 @@ Function Install-EntraApp {
     $Params = @{
         '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
     }
-    Invoke-MgGraphRequest -Method POST -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
+    Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
 
     # Return the newly created application
     Return (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$($EntraApp.Id)")
@@ -1850,7 +1850,7 @@ function Get-SOAEntraApp {
                 $Params = @{
                     '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
                 }
-                Invoke-MgGraphRequest -Method POST -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
+                Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
             }
         }  
     }
@@ -2390,6 +2390,7 @@ Function Install-SOAPrerequisites
 
             # Perform Graph check using credentials on the App
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
+            Start-Sleep 10 # Avoid a race condition
             Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null
             
             If($ConnectError){
