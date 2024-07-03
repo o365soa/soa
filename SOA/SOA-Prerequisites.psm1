@@ -161,21 +161,6 @@ Function Reset-SOAAppSecret {
 
     Return $Response.SecretText
 }
-Function Reset-SOAAppSecretv2 {
-    <#
-        This creates a new secret for the application when the app is retrieved using Get-MgApplication
-    #>
-    Param (
-        $App,
-        $Task
-    )
-
-    # Provision a short lived credential (48 hours)
-    $clientsecret = Add-MgApplicationPassword -ApplicationId $App.Id -PasswordCredential @{displayName="$Task on $(Get-Date -Format "dd-MMM-yyyy")";endDateTime=(Get-Date).AddDays(2)}
-
-    Return $clientsecret.SecretText
-}
-
 function Remove-SOAAppSecret {
     # Removes any client secrets associated with the application when the app is retrieved using Invoke-MgGraphRequest from the Microsoft.Graph.Authentication module
     param ()
@@ -188,21 +173,6 @@ function Remove-SOAAppSecret {
         # Suppress errors in case a secret no longer exists
         try {
             Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($App.appId)`')/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
-        }
-        catch {}
-    }
-}
-
-function Remove-SOAAppSecretv2 {
-    # Removes any client secrets associated with the application when the app is retrieved using Get-MgApplication
-    param ($app)
-
-    # Get application again from Entra to be sure it includes any added secrets
-    $secrets = (Get-MgApplication -ApplicationId $app.Id).PasswordCredentials
-    foreach ($secret in $secrets) {
-        # Suppress errors in case a secret no longer exists
-        try {
-            Remove-MgApplicationPassword -ApplicationId $app.Id -KeyId $secret.KeyId | Out-Null
         }
         catch {}
     }
