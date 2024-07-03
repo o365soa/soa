@@ -103,7 +103,7 @@ function Get-InitialDomain {
         Used during connection tests for SPO and Teams
     #>
     
-    # Get the default MSOL domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
+    # Get the default onmicrosoft domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
     $OrgData = (Invoke-MgGraphRequest GET "/v1.0/organization" -OutputType PSObject).Value
     return ($OrgData | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.isInitial }).Name 
 
@@ -1116,7 +1116,6 @@ Function Invoke-SOAModuleCheck {
     $ConflictModules = @()
 
     # Bypass checks
-    If($Bypass -notcontains "MSOL") { $RequiredModules += "MSOnline" }
     If($Bypass -notcontains "SPO") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
     If (($Bypass -notcontains "EXO" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
@@ -1268,45 +1267,6 @@ Function Test-Connections {
         }
     }
 
-    <#
-        
-        AAD PowerShell v1 (MSOL)
-        
-    #>
-    If($Bypass -notcontains "MSOL") {
-
-        Import-PSModule -ModuleName MSOnline -Implicit $UseImplicitLoading
-        # Reset vars
-        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
-
-        Write-Host "$(Get-Date) Connecting to Microsft Entra with Azure AD PowerShell 1..."
-        switch ($CloudEnvironment) {
-            "Commercial"   {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-            "USGovGCC"     {Connect-MsolService -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-            "USGovGCCHigh" {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-            "USGovDoD"     {Connect-MsolService -AzureEnvironment USGovernment -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-            "Germany"      {Connect-MsolService -AzureEnvironment AzureGermanyCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError;break}
-            "China"        {Connect-MsolService -AzureEnvironment AzureChinaCloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError}
-        }
-        
-        # If no error, try test command
-        If($ConnectError) { $Connect = $False; $Command = $False} Else { 
-            $Connect = $True 
-            # Cmdlet that can be run by any user
-            Get-MsolUser -MaxResults 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
-            # Cmdlet that requires admin role
-            #Get-MsolDomain -ErrorAction SilentlyContinue -ErrorVariable CommandError | Out-Null
-            If($CommandError) { $Command = $False } Else { $Command = $True }
-        }
-
-        $Connections += New-Object -TypeName PSObject -Property @{
-            Name="MSOL"
-            Connected=$Connect
-            ConnectErrors=$ConnectError
-            TestCommand=$Command
-            TestCommandErrors=$CommandError
-        }
-    }
 
     <#
     
@@ -1903,7 +1863,7 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ConnectOnly')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [ValidateSet("MSOL","EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
+        [ValidateSet("EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
     [switch]$UseProxy,
     [Parameter(DontShow)][Switch]$AllowMultipleWindows,
     [Parameter(DontShow)][switch]$NoVersionCheck,
@@ -1952,7 +1912,7 @@ Function Install-SOAPrerequisites
         }
 
     # Detect if running in PS 7
-    # EXO 2.0.3, Teams, MSOnline modules do not support PS 7
+    # EXO 2.0.3, Teams modules do not support PS 7
     if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
         throw "Running this script in PowerShell 7 is not supported."
     }
