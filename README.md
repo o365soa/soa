@@ -101,7 +101,6 @@ The permission scopes used by the app registration:
 |Graph|DeviceManagementConfiguration.Read|Application|Get Intune configuration policies, if applicable.|
 |Graph|Directory.Read.All|Application|Get subscriptions in the tenant and sign-in activity for user and guest accounts. (Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)|
 |Graph|IdentityRiskEvent.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection.|
-|Graph|IdentityRiskyUser.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection. (Both this scope and IdentityRiskEvent.Read.All are required to get risk events.)|
 |Graph|OnPremDirectorySynchronization.Read.All|Application|Get Microsoft Entra directory synchronization settings.|
 Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
 |Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.

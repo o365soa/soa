@@ -1493,12 +1493,6 @@ Function Get-RequiredAppPermissions {
 
     # Microsoft Graph
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="dc5007c0-2d7d-4c42-879c-2dab87571379"
-        Name="IdentityRiskyUser.Read.All"
-        Type='Role'
-        Resource="00000003-0000-0000-c000-000000000000" # Graph
-    }
-    $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
         Name="IdentityRiskEvent.Read.All"
         Type='Role'
