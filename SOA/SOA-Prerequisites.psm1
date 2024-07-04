@@ -1528,11 +1528,6 @@ Function Get-RequiredAppPermissions {
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
-    switch ($CloudEnvironment) {
-        "USGovGCCHigh" {$EnvironmentRoleID = "73d442ea-eff8-40b5-a216-87616d77e983";break}
-        "USGovDoD"     {$EnvironmentRoleID = "73d442ea-eff8-40b5-a216-87616d77e983";break}
-        Default        {$EnvironmentRoleID = "45cc0394-e837-488b-a098-1918f48d186c"}
-    }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="78ce3f0f-a1ce-49c2-8cde-64b5c0896db4"
         Name="user_impersonation"
