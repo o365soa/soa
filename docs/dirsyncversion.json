@@ -1,0 +1,27 @@
+[
+    {
+        "Version": "2.3.8.0",
+        "SupportEndDate": "\/Date(1914476400000)\/",
+        "SecurityUpdates":  false
+    },
+    {
+        "Version": "2.3.6.0",
+        "SupportEndDate": "\/Date(1743490800000)\/",
+        "SecurityUpdates":  false
+    },
+    {
+        "Version": "2.3.2.0",
+        "SupportEndDate": "\/Date(1740124800000)\/",
+        "SecurityUpdates":  false
+    },
+    {
+        "Version": "2.2.8.0",
+        "SupportEndDate": "\/Date(1733990400000)\/",
+        "SecurityUpdates":  false
+    },
+    {
+        "Version": "2.2.1.0",
+        "SupportEndDate": "\/Date(1728630000000)\/",
+        "SecurityUpdates":  false
+    }
+]
