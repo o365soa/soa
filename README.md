@@ -16,9 +16,7 @@ The latest version of the following PowerShell modules are installed:
 * SharePoint Online
 * Microsoft Teams
 * Power Apps admin
-* From the Microsoft Graph PowerShell SDK: 
-  * Microsoft.Graph.Authentication
-  * Microsoft.Graph.Applications
+* Microsoft.Graph.Authentication from the Microsoft Graph PowerShell SDK
 * Active Directory
 
 Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
@@ -102,13 +100,10 @@ The permission scopes used by the app registration:
 |Graph|DeviceManagementConfiguration.Read|Application|Get Intune configuration policies, if applicable.|
 |Graph|Directory.Read.All|Application|Get subscriptions in the tenant and sign-in activity for user and guest accounts. (Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)|
 |Graph|IdentityRiskEvent.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection.|
-|Graph|IdentityRiskyUser.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection. (Both this scope and IdentityRiskEvent.Read.All are required to get risk events.)|
 |Graph|OnPremDirectorySynchronization.Read.All|Application|Get Microsoft Entra directory synchronization settings.|
 Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
 |Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.
 |Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
-|Graph|SecurityEvents.Read.All|Application|Get active security events within your tenant.
-|Graph|SecurityIncident.Read.All|Application|Get Defender security incidents.
 |Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
 |Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2 to get active AIR investigations, or organisations with Microsoft Defender for Endpoint to get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
