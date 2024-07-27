@@ -11,12 +11,12 @@ The preqrequisites installation script is included in a PowerShell module named 
 
 ## Prerequisites Breakdown
 
-The latest version of the following PowerShell modules are installed:
-* Exchange Online Management
+The latest version of the following PowerShell modules is installed:
+* Exchange Online
 * SharePoint Online
 * Microsoft Teams
 * Power Apps admin
-* Microsoft.Graph.Authentication from the Microsoft Graph PowerShell SDK
+* Microsoft.Graph.Authentication (from the Microsoft Graph PowerShell SDK)
 * Active Directory
 
 Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
