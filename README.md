@@ -12,7 +12,6 @@ The preqrequisites installation script is included in a PowerShell module named 
 ## Prerequisites Breakdown
 
 The latest version of the following PowerShell modules are installed:
-* Azure AD MSOnline (v1)
 * Exchange Online Management
 * SharePoint Online
 * Microsoft Teams
