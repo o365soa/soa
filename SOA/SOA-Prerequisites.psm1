@@ -778,7 +778,7 @@ function Get-LicenseStatus {
     switch ($LicenseType) {
         ATPP2 {
             # SKUs that start with strings include MDO P2 (for collecting MDO incidents)
-            $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','SPE_F5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','THREAT_INTELLIGENCE','M365_SECURITY_COMPLIANCE','Microsoft_365 G5_Security','M365_G5')
+            $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','SPE_F5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','THREAT_INTELLIGENCE','M365_SECURITY_COMPLIANCE','Microsoft_365 G5_Security','M365_G5',"Microsoft_365_E5")
         }
         MDE {
             # SKUs that start with strings include MDE to be able to use its advanced hunting API
