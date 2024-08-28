@@ -1127,7 +1127,8 @@ Function Test-Connections {
             "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
-        if ((Get-MgContext).Scopes -notcontains 'Application.ReadWrite.All') {
+        $ConnContext = (Get-MgContext).Scopes
+        if ($ConnContext -notcontains 'Application.ReadWrite.All' -or ($ConnContext -notcontains 'Organization.Read.All' -and $ConnContext -notcontains 'Directory.Read.All')) {
             Write-Host "$(Get-Date) Connecting to Microsoft Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -1138,7 +1139,7 @@ Function Test-Connections {
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
                     # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
                     # Using Organization.Read.All because that is the least-common scope for getting licenses in the app check
-                    Connect-MgGraph -Scopes 'Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
+                    Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
                 }
                 catch {
                     Write-Verbose $_
@@ -1155,8 +1156,8 @@ Function Test-Connections {
                 $GraphSDKConnected = $true
             }
             if ($Connect -eq $true) {
-                $me = Invoke-MgGraphRequest -Method GET -Uri '/v1.0/me' -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError
-                if ($me.userPrincipalName) {$Command = $true} else {$Command = $false}
+                $org = (Invoke-MgGraphRequest -Method GET -Uri '/v1.0/organization' -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError).Value
+                if ($org.id) {$Command = $true} else {$Command = $false}
             }
         }
 
@@ -2090,8 +2091,8 @@ Function Install-SOAPrerequisites
             "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
-        $mgContext = Get-MgContext
-        if ($mgContext.Scopes -notcontains 'Application.ReadWrite.All' -or $mgContext.Scopes -notcontains 'Organization.Read.All') {
+        $mgContext =  (Get-MgContext).Scopes
+        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All')) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
