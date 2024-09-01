@@ -57,7 +57,7 @@ If directory synchronisation is used, a script will need to be executed on a dom
 ### Running the prerequisites script
 
 1. Open a new PowerShell window (not the ISE).
-2. Run the following to install the latest version of the SOA module from Powershell Gallery:
+2. Run the following to install the latest version of the SOA module from the [PowerShell Gallery](https://www.powershellgallery.com/packages/SOA/):
 
    `Install-Module SOA`
 
