@@ -1537,6 +1537,12 @@ Function Get-RequiredAppPermissions {
             Type='Role'
             Resource="00000003-0000-0000-c000-000000000000" # Graph
         }
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="bf394140-e372-4bf9-a898-299cfc7564e5"
+            Name="SecurityEvents.Read.All"
+            Type='Role'
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
+        }
     }
 
     Return $AppRoles
