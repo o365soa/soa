@@ -105,7 +105,8 @@ Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as 
 |Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.
 |Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
 |Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
-|Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2 to get active AIR investigations, or organisations with Microsoft Defender for Endpoint to get health alerts.|
+|Graph|SecurityEvents.Read.All|Application|For organisations with Microsoft Defender for Identity, get configuration details from Secure Score that do not have an API available yet.|
+|Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2, get active automated investigations. For organisations with Microsoft Defender for Endpoint, get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
 
 ### App registration security
