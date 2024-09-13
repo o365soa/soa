@@ -372,7 +372,7 @@ Function Invoke-AppPermissionCheck
     $SleepTime = 10
     $Counter = 0
 
-    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.AppId) Role Count $($Roles.Count)"
+    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck; App ID $($App.AppId); Role Count $($Roles.Count)"
 
     While($Counter -lt $MaxTime)
     {
@@ -409,11 +409,12 @@ Function Invoke-AppPermissionCheck
 
         If($Provisioned -eq $True)
         {
-            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($app.Id) Role Count $($Roles.Count) OK"
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck; App ID $($app.Id); Role Count $($Roles.Count) OK"
             Break
         } 
         Else 
         {
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck; App ID $($app.Id); Missing roles: $($Missing -Join ";")"
             Start-Sleep $SleepTime
             $Counter += $SleepTime
             Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck loop - waiting for permissions on Entra application - Counter $Counter maxTime $MaxTime Missing $($Missing -join ' ')"
@@ -1708,25 +1709,23 @@ Function Test-SOAApplication
         $Secret,
         $TenantDomain,
         [Switch]$WriteHost,
+        [Switch]$ManualCred=$False,
         [Switch]$NewTokens,
         [Alias("O365EnvironmentName")][string]$CloudEnvironment="Commercial"
     )
 
     Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length) CloudEnvironment $CloudEnvironment"
 
-    # Perform permission check
-    If($WriteHost) { Write-Host "$(Get-Date) Performing application permission check... (This may take up to 5 minutes)" }
-    $PermCheck = Invoke-AppPermissionCheck -App $App
+    # Perform permission check, except when manually providing the secret because there will be no delegated connection
+    if ($ManualCred -eq $False) {
+        If($WriteHost) { Write-Host "$(Get-Date) Performing application permission check... (This may take up to 5 minutes)" }
+        $PermCheck = Invoke-AppPermissionCheck -App $App
+    }
 
     # Perform check for consent
-    If($PermCheck -eq $True)
-    {
-        If($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
-        If ($NewTokens){
-            $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
-        } Else {
-            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment
-        }
+    if ($PermCheck -eq $True) {
+        If ($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
+        $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
     }
 
     Return New-Object -TypeName PSObject -Property @{
@@ -2091,6 +2090,7 @@ Function Install-SOAPrerequisites
             "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
+
         $mgContext =  (Get-MgContext).Scopes
         if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All')) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
@@ -2129,7 +2129,7 @@ Function Install-SOAPrerequisites
             $script:ATPP2Licensed = Get-LicenseStatus -LicenseType ATPP2
             Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $($script:ATPP2Licensed)"
 
-            # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesnt
+            # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesn't
             $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
         }
 
