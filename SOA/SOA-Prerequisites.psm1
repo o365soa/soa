@@ -1726,6 +1726,9 @@ Function Test-SOAApplication
     if ($PermCheck -eq $True) {
         If ($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
         $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
+    } else {
+        # Set as False to ensure the final result shows the check as Failed instead of Null
+        $TokenCheck = $False
     }
 
     Return New-Object -TypeName PSObject -Property @{
@@ -1775,7 +1778,10 @@ Function Install-SOAPrerequisites
         [Alias('AzureADAppOnly')][switch]$EntraAppOnly,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$RemoveExistingEntraApp
+        [switch]$RemoveExistingEntraApp,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$ProvideApplicationSecret
     )
 
     <#
@@ -1802,7 +1808,7 @@ Function Install-SOAPrerequisites
     $EntraAppCheck = $True
 
     # Default to remediate (applicable only when not using ConnectOnly)
-    if ($DoNotRemediate -eq $false){
+    if ($DoNotRemediate -eq $false -and $ProvideApplicationSecret -eq $false){
         $Remediate = $true
     }
     else {
@@ -2092,7 +2098,7 @@ Function Install-SOAPrerequisites
         }
 
         $mgContext =  (Get-MgContext).Scopes
-        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All')) {
+        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -or ($ProvideApplicationSecret)) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -2101,7 +2107,12 @@ Function Install-SOAPrerequisites
                 try {
                     $connCount++
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
-                    Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    if ($ProvideApplicationSecret) {
+                        # Request read-only permissions to Graph if manually providing the client secret
+                        Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    } else {
+                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    }
                 }
                 catch {
                     Write-Verbose $_
@@ -2151,14 +2162,26 @@ Function Install-SOAPrerequisites
                 }
             }
 
-            # Reset secret
-            $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
-            Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
-            Start-Sleep 10
+            if ($ProvideApplicationSecret -eq $True) {
+                # Prompt for the client secret needed to connect to the application
+                $SSCred = $null
+
+                Write-Host "$(Get-Date) At the prompt, provide a valid Client Secret to connect to the application registration"
+                Start-Sleep -Seconds 1
+                while ($null -eq $SSCred -or $SSCred.Length -eq 0) {
+                    # UserName is a required parameter for Get-Credential but it's value is not used elsewhere in the script
+                    $SSCred = (Get-Credential -Message "Enter the application Client Secret into the password field." -UserName "Microsoft Security Assessment").Password
+                }
+            } else {
+                # Reset secret
+                $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
+                $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
+                Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
+                Start-Sleep 10
+            }
 
             # Reconnect with Application permissions
             Disconnect-MgGraph | Out-Null
-            $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
             $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($EntraApp.AppId), $SSCred
             $ConnCount = 0
             Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
@@ -2175,7 +2198,7 @@ Function Install-SOAPrerequisites
             $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                 
             # Entra App Permission - Perform remediation if specified
-            If($AppTest.Permissions -eq $False -and $DoNotRemediate -eq $false)
+            If($AppTest.Permissions -eq $False -and $Remediate -eq $true)
             {
                 # Set up the correct Entra App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
@@ -2202,7 +2225,7 @@ Function Install-SOAPrerequisites
             If($AppTest.Token -eq $False)
             {
                 Write-Host "$(Get-Date) Missing roles in access token; possible that consent was not completed..."
-                if ($DoNotRemediate -eq $false) {
+                if ($Remediate -eq $true) {
                     # Request admin consent
                     If((Invoke-Consent -App $EntraApp -CloudEnvironment $CloudEnvironment) -eq $True) {
                         # Perform check again after consent
@@ -2239,8 +2262,10 @@ Function Install-SOAPrerequisites
                     Pass=$True
                 }
 
-                # Remove client secret
-                Remove-SOAAppSecret
+                if ($ProvideApplicationSecret -eq $false) {
+                    # Remove client secret
+                    Remove-SOAAppSecret
+                }
                 # Disconnect
                 Disconnect-MgGraph | Out-Null
             }
