@@ -2166,17 +2166,17 @@ Function Install-SOAPrerequisites
                 # Prompt for the client secret needed to connect to the application
                 $SSCred = $null
 
-                Write-Host "$(Get-Date) At the prompt, provide a valid Client Secret to connect to the application registration"
+                Write-Host "$(Get-Date) At the prompt, provide a valid client secret for the assessment's app registration."
                 Start-Sleep -Seconds 1
                 while ($null -eq $SSCred -or $SSCred.Length -eq 0) {
                     # UserName is a required parameter for Get-Credential but it's value is not used elsewhere in the script
-                    $SSCred = (Get-Credential -Message "Enter the application Client Secret into the password field." -UserName "Microsoft Security Assessment").Password
+                    $SSCred = (Get-Credential -Message "Enter the app registration's client secret into the password field." -UserName "Microsoft Security Assessment").Password
                 }
             } else {
                 # Reset secret
                 $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
                 $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
-                Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
+                Write-Host "$(Get-Date) Sleeping to allow for replication of the app registration's new client secret..."
                 Start-Sleep 10
             }
 
