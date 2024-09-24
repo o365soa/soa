@@ -1781,7 +1781,7 @@ Function Install-SOAPrerequisites
         [switch]$RemoveExistingEntraApp,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$ProvideApplicationSecret
+        [switch]$PromptForApplicationSecret
     )
 
     <#
@@ -1808,7 +1808,7 @@ Function Install-SOAPrerequisites
     $EntraAppCheck = $True
 
     # Default to remediate (applicable only when not using ConnectOnly)
-    if ($DoNotRemediate -eq $false -and $ProvideApplicationSecret -eq $false){
+    if ($DoNotRemediate -eq $false -and $PromptForApplicationSecret -eq $false){
         $Remediate = $true
     }
     else {
@@ -2098,7 +2098,7 @@ Function Install-SOAPrerequisites
         }
 
         $mgContext =  (Get-MgContext).Scopes
-        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -or ($ProvideApplicationSecret)) {
+        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -or ($PromptForApplicationSecret)) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -2107,7 +2107,7 @@ Function Install-SOAPrerequisites
                 try {
                     $connCount++
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
-                    if ($ProvideApplicationSecret) {
+                    if ($PromptForApplicationSecret) {
                         # Request read-only permissions to Graph if manually providing the client secret
                         Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
                     } else {
@@ -2162,7 +2162,7 @@ Function Install-SOAPrerequisites
                 }
             }
 
-            if ($ProvideApplicationSecret -eq $True) {
+            if ($PromptForApplicationSecret -eq $True) {
                 # Prompt for the client secret needed to connect to the application
                 $SSCred = $null
 
@@ -2262,7 +2262,7 @@ Function Install-SOAPrerequisites
                     Pass=$True
                 }
 
-                if ($ProvideApplicationSecret -eq $false) {
+                if ($PromptForApplicationSecret -eq $false) {
                     # Remove client secret
                     Remove-SOAAppSecret
                 }
