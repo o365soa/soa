@@ -792,6 +792,12 @@ function Get-LicenseStatus {
         AADP2 {
             $targetSkus = @('AAD_PREMIUM_P2','DEVELOPERPACK_E5','EMSPREMIUM','IDENTITY_THREAT_PROTECTION','M365_G5','M365_SEC','M365EDU_A5','Microsoft_365_E5','SPE_E5','SPE_F5')
         }
+        Teams {
+            $resources = (Get-Content -Path (Join-Path -Path $MyInvocation.MyCommand.Module.ModuleBase -ChildPath resources.json) | ConvertFrom-Json)
+            $defaultSkus = $resources.Sku.Teams.Default 
+            $customSkus = $resources.Sku.Teams.Custom
+            $targetSkus = $defaultSkus + $customSkus
+        }
         default {
             Write-Error -Message "$(Get-Date) Invalid license type specified"
             return $false
@@ -799,11 +805,23 @@ function Get-LicenseStatus {
     }
     
     $subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
-    foreach ($tSku in $targetSkus) {
-        foreach ($sku in $subscribedSku.value) {
-            if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
-                Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
-                return $true
+    if ($LicenseType -eq "Teams") {
+        # Teams licence check is handled differently because it needs to be an exact match
+        foreach ($tSku in $targetSkus) {
+            foreach ($sku in $subscribedSku.value) {
+                if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+                    return $true
+                }
+            }
+        }
+    } else {
+        foreach ($tSku in $targetSkus) {
+            foreach ($sku in $subscribedSku.value) {
+                if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+                    return $true
+                }
             }
         }
     }
@@ -1108,7 +1126,7 @@ Function Test-Connections {
     #>
     $connectToGraph = $false
     $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
-    # Teams and SPO connections are dependent on Graph connection to get initial domain
+    # Teams and SPO connections are dependent on Graph connection to determine Teams service plans and to get initial domain
     if ($Bypass -notcontains 'Teams' -or $Bypass -notcontains 'SPO' ) {
         if ($Bypass -contains 'Graph') {
             Write-Warning -Message "Even though Graph is bypassed, Teams and/or SPO are not bypassed and require Graph. Therefore, the Graph connection will still occur."
@@ -1310,22 +1328,25 @@ Function Test-Connections {
         Microsoft Teams
     
     #>
-    If($Bypass -notcontains "Teams") {
-        Import-PSModule -ModuleName MicrosoftTeams -Implicit $UseImplicitLoading
-        # Reset vars
-        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
-
+    if ($Bypass -notcontains "Teams") {
+        # Connect to Teams only if a tenant SKU includes Teams service plan
         if ($GraphSDKConnected -eq $true) {
+            $TeamsLicensed = (Get-LicenseStatus -LicenseType Teams)
+        }
+        if ($TeamsLicensed -eq $true) {
+            Import-PSModule -ModuleName MicrosoftTeams -Implicit $UseImplicitLoading
+            # Reset vars
+            $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+
             Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
-            $InitialDomain = Get-InitialDomain
             switch ($CloudEnvironment) {
-                "Commercial"    {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovGCC"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovDoD"      {try {Connect-MicrosoftTeams -TenantId $InitialDomain -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
+                "Commercial"    {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovGCC"      {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovDoD"      {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
                 #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
                 "China"         {Write-Host "Teams is not available in 21Vianet offering";break}
-                default         {try {Connect-MicrosoftTeams -TenantId $InitialDomain} catch {New-Variable -Name ConnectError -Value $true}}
+                default         {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
             }
             #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
