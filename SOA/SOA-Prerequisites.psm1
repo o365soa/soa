@@ -104,7 +104,7 @@ function Get-InitialDomain {
     #>
     
     # Get the default onmicrosoft domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
-    $OrgData = (Invoke-MgGraphRequest GET "/v1.0/organization" -OutputType PSObject).Value
+    $OrgData = (Invoke-MgGraphRequest GET "$GraphHost/v1.0/organization" -OutputType PSObject).Value
     return ($OrgData | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.isInitial }).Name 
 
 }
@@ -157,7 +157,7 @@ Function Reset-SOAAppSecret {
             endDateTime = (Get-Date).ToUniversalTime().AddDays(2).ToString("o")
         }
     }
-    $Response = Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications/$($App.Id)/addPassword" -body $Params
+    $Response = Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications/$($App.Id)/addPassword" -body $Params
 
     Return $Response.SecretText
 }
@@ -166,13 +166,13 @@ function Remove-SOAAppSecret {
     param ()
 
     # Get application again from Entra to be sure it includes any added secrets
-    $App = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
+    $App = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
 
     $secrets = $App.passwordCredentials
     foreach ($secret in $secrets) {
         # Suppress errors in case a secret no longer exists
         try {
-            Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($App.appId)`')/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
+            Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($App.appId)`')/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
         }
         catch {}
     }
@@ -310,7 +310,7 @@ Function Set-EntraAppPermission {
             'requiredResourceAccess' = $RequiredResources
         }
 
-        Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($App.Id)" -Body ($Params | ConvertTo-Json -Depth 5)
+        Invoke-MgGraphRequest -Method PATCH -Uri "$GraphHost/v1.0/applications/$($App.Id)" -Body ($Params | ConvertTo-Json -Depth 5)
         $PermissionSet = $True
     }
     catch {
@@ -372,7 +372,7 @@ Function Invoke-AppPermissionCheck
     $SleepTime = 10
     $Counter = 0
 
-    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($App.AppId) Role Count $($Roles.Count)"
+    Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck; App ID $($App.AppId); Role Count $($Roles.Count)"
 
     While($Counter -lt $MaxTime)
     {
@@ -383,7 +383,7 @@ Function Invoke-AppPermissionCheck
         while ($rCounter -le 5) {
             try {
                 Write-Verbose "$(Get-Date) Getting application from Entra (attempt #$rCounter)"
-                $App = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$appId" -ErrorAction Stop
+                $App = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications/$appId" -ErrorAction Stop
                 break
             }
             catch {
@@ -409,11 +409,12 @@ Function Invoke-AppPermissionCheck
 
         If($Provisioned -eq $True)
         {
-            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck App ID $($app.Id) Role Count $($Roles.Count) OK"
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck; App ID $($app.Id); Role Count $($Roles.Count) OK"
             Break
         } 
         Else 
         {
+            Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck; App ID $($app.Id); Missing roles: $($Missing -Join ";")"
             Start-Sleep $SleepTime
             $Counter += $SleepTime
             Write-Verbose "$(Get-Date) Invoke-AppPermissionCheck loop - waiting for permissions on Entra application - Counter $Counter maxTime $MaxTime Missing $($Missing -join ' ')"
@@ -615,20 +616,20 @@ Function Install-EntraApp {
         }
     }
 
-    $EntraApp = Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications" -Body $Params
+    $EntraApp = Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications" -Body $Params
 
     # Set up the correct permissions
     Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
 
     # Add service principal (enterprise app) as owner of its app registration
-    $appSp = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
+    $appSp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
     $Params = @{
         '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
     }
-    Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
+    Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
 
     # Return the newly created application
-    Return (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$($EntraApp.Id)")
+    Return (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)")
     
 }
 
@@ -1174,7 +1175,7 @@ Function Test-Connections {
                 $GraphSDKConnected = $true
             }
             if ($Connect -eq $true) {
-                $org = (Invoke-MgGraphRequest -Method GET -Uri '/v1.0/organization' -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError).Value
+                $org = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/organization" -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError).Value
                 if ($org.id) {$Command = $true} else {$Command = $false}
             }
         }
@@ -1648,12 +1649,12 @@ function Get-SOAEntraApp {
 
     # Determine if Microsoft Entra application exists
     # Retrieving the Count is mandatory when using Eventual consistency level, otherwise a HTTP/400 error is returned
-    $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
+    $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
 
     if ($EntraApp -and $RemoveExistingEntraApp -and $DoNotRemediate -eq $false) {
         Write-Host "$(Get-Date) Removing existing Microsoft Entra application..."
         try {
-            Invoke-MgGraphRequest -Method DELETE -Uri "/v1.0/applications/$($EntraApp.Id)"
+            Invoke-MgGraphRequest -Method DELETE -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)"
             $EntraApp = $null
         }
         catch {
@@ -1673,7 +1674,7 @@ function Get-SOAEntraApp {
         if ($EntraApp.displayName -eq 'Office 365 Security Optimization Assessment') {
             Write-Verbose "$(Get-Date) Renaming the display name of the Microsoft Entra application..."
             $Body = @{'displayName' = 'Microsoft Security Assessment'}
-            Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($EntraApp.Id)" -Body $Body
+            Invoke-MgGraphRequest -Method PATCH -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)" -Body $Body
         }
 
         # Check if public client URI is set
@@ -1687,10 +1688,10 @@ function Get-SOAEntraApp {
                         'redirectUris' = $pcRUrl
                     }
                 }
-                Invoke-MgGraphRequest -Method PATCH -Uri "/v1.0/applications/$($EntraApp.Id)" -Body $Params
+                Invoke-MgGraphRequest -Method PATCH -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)" -Body $Params
                 
                 # Get app again so public client is set for checking DoNotRemediate in calling function
-                $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
+                $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
             }
         }
         # Check if correct web redirect URIs are set
@@ -1703,21 +1704,21 @@ function Get-SOAEntraApp {
                         'redirectUris' = $webRUri
                     }
                 }
-                Invoke-MgGraphRequest PATCH "/v1.0/applications/$($EntraApp.Id)" -Body $Params
+                Invoke-MgGraphRequest PATCH "$GraphHost/v1.0/applications/$($EntraApp.Id)" -Body $Params
 
-                $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
+                $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
             }
         }
         # Check if service principal (enterprise app) is owner of its app registration
-        $appOwners = (Invoke-MgGraphRequest -Method GET -Uri "/v1.0/applications/$($EntraApp.Id)/owners" -OutputType PSObject).Value
-        $appSp = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
+        $appOwners = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)/owners" -OutputType PSObject).Value
+        $appSp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
         if ($appOwners.Id -notcontains $appSp.Id) {
             if ($DoNotRemediate -eq $false) {
                 Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
                 $Params = @{
                     '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
                 }
-                Invoke-MgGraphRequest -Method POST -Uri "/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
+                Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
             }
         }  
     }
@@ -1735,25 +1736,26 @@ Function Test-SOAApplication
         $Secret,
         $TenantDomain,
         [Switch]$WriteHost,
+        [Switch]$ManualCred=$False,
         [Switch]$NewTokens,
         [Alias("O365EnvironmentName")][string]$CloudEnvironment="Commercial"
     )
 
     Write-Verbose "$(Get-Date) Test-SOAApplication App $($App.AppId) TenantDomain $($TenantDomain) SecretLength $($Secret.Length) CloudEnvironment $CloudEnvironment"
 
-    # Perform permission check
-    If($WriteHost) { Write-Host "$(Get-Date) Performing application permission check... (This may take up to 5 minutes)" }
-    $PermCheck = Invoke-AppPermissionCheck -App $App
+    # Perform permission check, except when manually providing the secret because there will be no delegated connection
+    if ($ManualCred -eq $False) {
+        If($WriteHost) { Write-Host "$(Get-Date) Performing application permission check... (This may take up to 5 minutes)" }
+        $PermCheck = Invoke-AppPermissionCheck -App $App
+    }
 
     # Perform check for consent
-    If($PermCheck -eq $True)
-    {
-        If($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
-        If ($NewTokens){
-            $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
-        } Else {
-            $TokenCheck = Invoke-AppTokenRolesCheck -App $App -Secret $Secret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment
-        }
+    if ($PermCheck -eq $True) {
+        If ($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
+        $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
+    } else {
+        # Set as False to ensure the final result shows the check as Failed instead of Null
+        $TokenCheck = $False
     }
 
     Return New-Object -TypeName PSObject -Property @{
@@ -1803,7 +1805,10 @@ Function Install-SOAPrerequisites
         [Alias('AzureADAppOnly')][switch]$EntraAppOnly,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$RemoveExistingEntraApp
+        [switch]$RemoveExistingEntraApp,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$PromptForApplicationSecret
     )
 
     <#
@@ -1823,6 +1828,15 @@ Function Install-SOAPrerequisites
     if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
         throw "Running this script in PowerShell 7 is not supported."
     }
+
+    switch ($CloudEnvironment) {
+        "Commercial"   {$GraphHost = "https://graph.microsoft.com";break}
+        "USGovGCC"     {$GraphHost = "https://graph.microsoft.com";break}
+        "USGovGCCHigh" {$GraphHost = "https://graph.microsoft.us";break}
+        "USGovDoD"     {$GraphHost = "https://dod-graph.microsoft.us";break}
+        "Germany"      {$GraphHost = "https://graph.microsoft.de";break}
+        "China"        {$GraphHost = "https://microsoftgraph.chinacloudapi.cn"}
+    }
     
     # Default run
     $ConnectCheck = $True
@@ -1830,7 +1844,7 @@ Function Install-SOAPrerequisites
     $EntraAppCheck = $True
 
     # Default to remediate (applicable only when not using ConnectOnly)
-    if ($DoNotRemediate -eq $false){
+    if ($DoNotRemediate -eq $false -and $PromptForApplicationSecret -eq $false){
         $Remediate = $true
     }
     else {
@@ -2118,8 +2132,9 @@ Function Install-SOAPrerequisites
             "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
+
         $mgContext =  (Get-MgContext).Scopes
-        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All')) {
+        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -or ($PromptForApplicationSecret)) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -2128,7 +2143,12 @@ Function Install-SOAPrerequisites
                 try {
                     $connCount++
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
-                    Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    if ($PromptForApplicationSecret) {
+                        # Request read-only permissions to Graph if manually providing the client secret
+                        Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    } else {
+                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
+                    }
                 }
                 catch {
                     Write-Verbose $_
@@ -2156,7 +2176,7 @@ Function Install-SOAPrerequisites
             $script:ATPP2Licensed = Get-LicenseStatus -LicenseType ATPP2
             Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $($script:ATPP2Licensed)"
 
-            # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesnt
+            # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesn't
             $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
         }
 
@@ -2178,14 +2198,26 @@ Function Install-SOAPrerequisites
                 }
             }
 
-            # Reset secret
-            $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
-            Write-Host "$(Get-Date) Sleeping to allow for replication of the application's new client secret..."
-            Start-Sleep 10
+            if ($PromptForApplicationSecret -eq $True) {
+                # Prompt for the client secret needed to connect to the application
+                $SSCred = $null
+
+                Write-Host "$(Get-Date) At the prompt, provide a valid client secret for the assessment's app registration."
+                Start-Sleep -Seconds 1
+                while ($null -eq $SSCred -or $SSCred.Length -eq 0) {
+                    # UserName is a required parameter for Get-Credential but it's value is not used elsewhere in the script
+                    $SSCred = (Get-Credential -Message "Enter the app registration's client secret into the password field." -UserName "Microsoft Security Assessment").Password
+                }
+            } else {
+                # Reset secret
+                $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
+                $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
+                Write-Host "$(Get-Date) Sleeping to allow for replication of the app registration's new client secret..."
+                Start-Sleep 10
+            }
 
             # Reconnect with Application permissions
             Disconnect-MgGraph | Out-Null
-            $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
             $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($EntraApp.AppId), $SSCred
             $ConnCount = 0
             Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
@@ -2202,7 +2234,7 @@ Function Install-SOAPrerequisites
             $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                 
             # Entra App Permission - Perform remediation if specified
-            If($AppTest.Permissions -eq $False -and $DoNotRemediate -eq $false)
+            If($AppTest.Permissions -eq $False -and $Remediate -eq $true)
             {
                 # Set up the correct Entra App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
@@ -2229,7 +2261,7 @@ Function Install-SOAPrerequisites
             If($AppTest.Token -eq $False)
             {
                 Write-Host "$(Get-Date) Missing roles in access token; possible that consent was not completed..."
-                if ($DoNotRemediate -eq $false) {
+                if ($Remediate -eq $true) {
                     # Request admin consent
                     If((Invoke-Consent -App $EntraApp -CloudEnvironment $CloudEnvironment) -eq $True) {
                         # Perform check again after consent
@@ -2266,8 +2298,10 @@ Function Install-SOAPrerequisites
                     Pass=$True
                 }
 
-                # Remove client secret
-                Remove-SOAAppSecret
+                if ($PromptForApplicationSecret -eq $false) {
+                    # Remove client secret
+                    Remove-SOAAppSecret
+                }
                 # Disconnect
                 Disconnect-MgGraph | Out-Null
             }
