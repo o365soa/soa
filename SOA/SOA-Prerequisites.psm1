@@ -803,7 +803,7 @@ function Get-LicenseStatus {
         }
     }
     
-    $subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "/v1.0/subscribedSkus" -OutputType PSObject
+    $subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
     if ($LicenseType -eq "Teams") {
         # Teams licence check is handled differently because it needs to be an exact match
         foreach ($tSku in $targetSkus) {
