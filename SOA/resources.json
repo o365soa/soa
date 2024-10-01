@@ -98,9 +98,9 @@
                                                     "TEAMS_FREE",
                                                     "Teams_Premium_(for_Departments)"
                                                 ],
-                                    "Custom": [
-
-                                    ]
+                                    "Custom":   [
+                                                    "Microsoft_Teams_Enterprise_New"
+                                                ]
                                 }
                     ]
                 }
