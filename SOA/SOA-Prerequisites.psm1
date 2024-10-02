@@ -1825,7 +1825,7 @@ Function Install-SOAPrerequisites
     # Detect if running in ISE and abort ($psise is an automatic variable that exists only in the ISE)
     if ($psise)
         {
-        # Leaving this empty block for future use if needed 
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         }
 
     # Detect if running in PS 7
