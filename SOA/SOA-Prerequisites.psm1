@@ -1148,7 +1148,7 @@ Function Test-Connections {
         }
         $ConnContext = (Get-MgContext).Scopes
         if ($ConnContext -notcontains 'Application.ReadWrite.All' -or ($ConnContext -notcontains 'Organization.Read.All' -and $ConnContext -notcontains 'Directory.Read.All')) {
-            Write-Host "$(Get-Date) Connecting to Microsoft Graph with delegated authentication..."
+            Write-Host "$(Get-Date) Connecting to Microsoft Graph (with delegated authentication)..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
             $connLimit = 5
@@ -1174,10 +1174,15 @@ Function Test-Connections {
                 $Connect = $True
                 $GraphSDKConnected = $true
             }
-            if ($Connect -eq $true) {
-                $org = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/organization" -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError).Value
-                if ($org.id) {$Command = $true} else {$Command = $false}
-            }
+        } else {
+            Write-Host "$(Get-Date) Connecting to Microsoft Graph (with delegated authentication)..." -NoNewline
+            Write-Host " Already connected (Run Disconnect-MgGraph if you want to reconnect to Graph)" -ForegroundColor Green
+            $Connect = $True
+            $GraphSDKConnected = $true
+        }
+        if ($Connect -eq $true) {
+            $org = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/organization" -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError).Value
+            if ($org.id) {$Command = $true} else {$Command = $false}
         }
 
         $Connections += New-Object -TypeName PSObject -Property @{
@@ -1394,12 +1399,12 @@ Function Test-Connections {
 
             Write-Host "$(Get-Date) Connecting to Power Apps..."
             switch ($CloudEnvironment) {
-                "Commercial"   {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCC"     {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint usgov | Out-Null;break}
-                "USGovGCCHigh" {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint usgovhigh | Out-Null;break}
-                "USGovDoD"     {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint dod | Out-Null;break}
+                "Commercial"   {try{Add-PowerAppsAccount | Out-Null}catch{$ConnectError=$_};break}
+                "USGovGCC"     {try{Add-PowerAppsAccount -Endpoint usgov | Out-Null}catch{$ConnectError=$_};break}
+                "USGovGCCHigh" {try{Add-PowerAppsAccount -Endpoint usgovhigh | Out-Null}catch{$ConnectError=$_};break}
+                "USGovDoD"     {try{Add-PowerAppsAccount -Endpoint dod | Out-Null}catch{$ConnectError=$_};break}
                 #"Germany"     {"Power Platform is not available in Germany" | Out-Null;break}
-                "China"        {Add-PowerAppsAccount -ErrorAction:SilentlyContinue -ErrorVariable ConnectError -Endpoint china | Out-Null}
+                "China"        {try{Add-PowerAppsAccount -Endpoint china | Out-Null}catch{$ConnectError=$_}}
             }
 
             # If no error, try test command
@@ -1817,14 +1822,15 @@ Function Install-SOAPrerequisites
 
     #>
     
-    #Detect if running in ISE and abort ($psise is an automatic variable that exists only in the ISE)
+    # Detect if running in ISE and abort ($psise is an automatic variable that exists only in the ISE)
     if ($psise)
         {
-        throw "Running this script in the PowerShell ISE is not supported."
+        # Leaving this empty block for future use if needed 
         }
 
     # Detect if running in PS 7
-    # EXO 2.0.3, Teams modules do not support PS 7
+    # Teams supports 7.2, EXO supports 7.0.3, Graph supports 7.0, PP and SPO work in 7.0 when using -UseWindowsPowerShell
+    # Therefore, PS 7 blocker will be removed in the future, requiring 7.2+
     if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
         throw "Running this script in PowerShell 7 is not supported."
     }
