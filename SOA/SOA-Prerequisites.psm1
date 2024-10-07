@@ -178,81 +178,6 @@ function Remove-SOAAppSecret {
     }
 }
 
-Function Import-MSAL {
-    <#
-    
-        Finds a suitable MSAL library from Graph SDK and uses that
-        This prevents us having to ship the .dll's ourself.
-
-    #>
-
-    # Add support for the .Net Core version of the library.
-    If ($PSEdition -eq 'Core'){
-        $Folder = "Core"
-    } Else {
-        $Folder = "Desktop"
-    }
-
-    $MgAuthModule = Get-Module -Name "Microsoft.Graph.Authentication" -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1
-    $MSAL = Join-Path $MgAuthModule.ModuleBase "Dependencies\$($Folder)\Microsoft.Identity.Client.dll"
-
-    # Load the MSAL library
-    Write-Verbose "$(Get-Date) Loading module from $MSAL"
-    Try {Add-Type -LiteralPath $MSAL | Out-Null} Catch {}
-}
-
-Function Get-MSALAccessToken {
-    <#
-    
-        Fetch an Access Token using MSAL libraries
-    
-    #>
-    Param(
-        $TenantName,
-        $ClientID,
-        $Secret,
-        $Resource,
-        [Alias("O365EnvironmentName")][string]$CloudEnvironment
-    )
-
-    Import-MSAL
-
-    switch ($CloudEnvironment) {
-        "Commercial"   {$Authority = "https://login.microsoftonline.com/$TenantName";break}
-        "USGovGCC"     {$Authority = "https://login.microsoftonline.com/$TenantName";break}
-        "USGovGCCHigh" {$Authority = "https://login.microsoftonline.us/$TenantName";break}
-        "USGovDoD"     {$Authority = "https://login.microsoftonline.us/$TenantName";break}
-        "Germany"      {$Authority = "https://login.microsoftonline.de/$TenantName";break}
-        "China"        {$Authority = "https://login.partner.microsoftonline.cn/$TenantName";break}
-    }
-
-    Write-Verbose "$(Get-Date) Get-MSALAccessToken function called from the pre-reqs module - Tenant: $TenantName ClientID: $ClientID Resource: $Resource SecretLength: $($Secret.Length) CloudEnvironment: $CloudEnvironment"
-
-    $ccApp = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientID).WithClientSecret($Secret).WithAuthority($Authority).WithLegacyCacheCompatibility($false).Build()
-
-    $Scopes = New-Object System.Collections.Generic.List[string]
-    $Scopes.Add("$($Resource)/.default")
-
-    $RetryDelay = 15
-    $TokenAttempt = 1
-    Do {
-        Try {
-            Write-Verbose "Attempt #$($TokenAttempt) to get an Access Token using MSAL for $($Resource)"
-            $TokenAttempt++
-            $token = $ccApp.AcquireTokenForClient($Scopes).ExecuteAsync().GetAwaiter().GetResult()
-        }
-        Catch {
-            Write-Verbose "$(Get-Date) Failed to get a token using MSAL. Sleeping for $($RetryDelay) seconds and then trying again"
-            Start-Sleep $RetryDelay
-        }
-    }
-    While (!$token -And $TokenAttempt -lt 12)
-
-    If ($token){Write-Verbose "$(Get-Date) Successfully got a token using MSAL for $($Resource)"}
-
-    return $token
-}
-
 Function Set-EntraAppPermission {
     <#
     
@@ -426,96 +351,6 @@ Function Invoke-AppPermissionCheck
 
 }
 
-function ConvertFrom-JWT {
-    param ($token)
-    # Perform decode from JWT
-    $tokenPayload = $token.accesstoken.Split(".")[1].Replace('-', '+').Replace('_', '/')
-    while ($tokenPayload.Length % 4) { $tokenPayload += "=" }
-    $tokenByteArray = [System.Convert]::FromBase64String($tokenPayload)
-    $tokenArray = [System.Text.Encoding]::ASCII.GetString($tokenByteArray)
-    Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Token JWT $($tokenArray)"
-    return ($tokenArray | ConvertFrom-Json)
-}
-
-Function Invoke-AppTokenRolesCheck {
-    <#
-    
-        This function checks for the presence of the right roles in the token
-        Consent may not have been completed without the right roles
-
-    #>
-    Param (
-        $App,
-        $Secret,
-        $TenantDomain,
-        [string]$CloudEnvironment
-    )
-
-    switch ($CloudEnvironment) {
-        "Commercial"   {$GraphResource = "https://graph.microsoft.com/";break}
-        "USGovGCC"     {$GraphResource = "https://graph.microsoft.com/";break}
-        "USGovGCCHigh" {$GraphResource = "https://graph.microsoft.us/";break}
-        "USGovDoD"     {$GraphResource = "https://dod-graph.microsoft.us/";break}
-        "Germany"      {$GraphResource = "https://graph.microsoft.de/";break}
-        "China"        {$GraphResource = "https://microsoftgraph.chinacloudapi.cn/"}
-    }
-
-    $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed -HasMDILicense $MDILicensed -HasATPP2License $ATPP2Licensed
-
-    # For race conditions, we will wait $MaxTime seconds and Sleep interval of $SleepTime
-    $MaxTime = 300
-    $SleepTime = 10
-    $Counter = 0
-    
-    # Check Graph endpoint
-    While($Counter -lt $MaxTime)
-    {
-        $MissingRoles = @()
-        Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck Begin for Graph endpoint"
-        # Obtain the token
-        $Token = Get-MSALAccessToken -TenantName $tenantdomain -ClientID $App.AppId -Secret $Secret -Resource $GraphResource -CloudEnvironment $CloudEnvironment
-
-        If($Null -ne $Token)
-        {
-            # Perform decode from JWT
-            $tokobj = ConvertFrom-JWT -token $Token
-
-            # Check the roles are in the token, only check Graph at this stage.
-            ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000"})) {
-                If($tokobj.Roles -notcontains $Role.Name) {
-                    Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck missing $($Role.Name)"
-                    $MissingRoles += $Role
-                }
-            }
-        }
-        If($MissingRoles.Count -eq 0 -and $Null -ne $Token)
-        {
-            $GraphResult = $True
-        }
-        Else 
-        {
-            $GraphResult = $False
-        }
-    
-        If($GraphResult -eq $True)
-        {
-            Break
-        } 
-        Else 
-        {
-            Start-Sleep $SleepTime
-            $Counter += $SleepTime
-            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck loop - Counter $Counter maxTime $MaxTime"
-        }
-    }
-
-    if ($GraphResult) {
-        $return = $true
-    }
-    else {$return = $false}
-    
-    return $return
-}
 
 Function Invoke-AppTokenRolesCheckV2 {
     <#
@@ -1741,8 +1576,7 @@ Function Test-SOAApplication
         $Secret,
         $TenantDomain,
         [Switch]$WriteHost,
-        [Switch]$ManualCred=$False,
-        [Switch]$NewTokens,
+        [Switch]$ManualCred,
         [Alias("O365EnvironmentName")][string]$CloudEnvironment="Commercial"
     )
 
