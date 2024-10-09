@@ -1,6 +1,176 @@
 {
     "SKU":  [
                 {
+                    "AADP2": [
+                                {
+                                    "Default": [
+                                                "AAD_PREMIUM_P2",
+                                                "DEVELOPERPACK_E5",
+                                                "EMSPREMIUM",
+                                                "EMSPREMIUM_GOV",
+                                                "EMSPREMIUM_USGOV_GCCHIGH",
+                                                "IDENTITY_THREAT_PROTECTION",
+                                                "M365_G5_GCC",
+                                                "M365_G5_GOV",
+                                                "M365EDU_A5_FACULTY",
+                                                "M365EDU_A5_NOPSTNCONF_STUUSEBNFT",
+                                                "M365EDU_A5_STUDENT",
+                                                "M365EDU_A5_STUUSEBNFT",
+                                                "Microsoft_365_E5",
+                                                "Microsoft_365_E5_EEA_(no_Teams)_with_Calling_Minutes",
+                                                "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing",
+                                                "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing_(500_seats_min)_HUB",
+                                                "Microsoft_365_E5_without_Audio_Conferencing",
+                                                "O365_w/o_Teams_Bundle_M5",
+                                                "O365_w/o_Teams_Bundle_M5_(500_seats_min)_HUB",
+                                                "SPE_E5",
+                                                "SPE_E5_CALLINGMINUTES",
+                                                "SPE_E5_NOPSTNCONF",
+                                                "SPE_E5_USGOV_GCCHIGH",
+                                                "SPE_F5_SEC",
+                                                "SPE_F5_SECCOMP"
+                                            ],
+                                    "Custom":   [
+
+                                                ]
+                                }
+                    ]
+                },
+                {
+                    "ATPP2": [
+                                {
+                                    "Default": [
+                                                    "DEVELOPERPACK_E5",
+                                                    "ENTERPRISEPREMIUM",
+                                                    "ENTERPRISEPREMIUM_FACULTY",
+                                                    "ENTERPRISEPREMIUM_GOV",
+                                                    "ENTERPRISEPREMIUM_NOPBIPBX_GOV",
+                                                    "ENTERPRISEPREMIUM_NOPSTNCONF",
+                                                    "ENTERPRISEPREMIUM_NOPSTNCONF_NOPBI_GOV",
+                                                    "ENTERPRISEPREMIUM_STUDENT",
+                                                    "IDENTITY_THREAT_PROTECTION",
+                                                    "IDENTITY_THREAT_PROTECTION_FOR_EMS_E5",
+                                                    "M365_G5_GCC",
+                                                    "M365_G5_GOV",
+                                                    "M365_SECURITY_COMPLIANCE_FOR_FLW",
+                                                    "M365EDU_A5_FACULTY",
+                                                    "M365EDU_A5_NOPSTNCONF_STUUSEBNFT",
+                                                    "M365EDU_A5_STUDENT",
+                                                    "M365EDU_A5_STUUSEBNFT",
+                                                    "Microsoft_365_E5",
+                                                    "Microsoft_365_E5_EEA_(no_Teams)_with_Calling_Minutes",
+                                                    "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing",
+                                                    "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing_(500_seats_min)_HUB",
+                                                    "Microsoft_365_E5_without_Audio_Conferencing",
+                                                    "O365_w/o_Teams_Bundle_M5",
+                                                    "O365_w/o_Teams_Bundle_M5_(500_seats_min)_HUB",
+                                                    "Office_365_E5_EEA_(no_Teams)_without_Audio_Conferencing",
+                                                    "Office_365_w/o_Teams_Bundle_E5",
+                                                    "SPE_E5",
+                                                    "SPE_E5_CALLINGMINUTES",
+                                                    "SPE_E5_NOPSTNCONF",
+                                                    "SPE_E5_USGOV_GCCHIGH",
+                                                    "SPE_F5_SEC",
+                                                    "SPE_F5_SECCOMP",
+                                                    "THREAT_INTELLIGENCE",
+                                                    "THREAT_INTELLIGENCE_GOV"
+                                                ],
+                                    "Custom":   [
+
+                                    ]
+                                }
+                    ]
+                },
+                {
+                    "MDE": [
+                                {
+                                    "Default": [
+                                                    "DEFENDER_ENDPOINT_P1",
+                                                    "DEFENDER_ENDPOINT_P1_EDU",
+                                                    "IDENTITY_THREAT_PROTECTION",
+                                                    "IDENTITY_THREAT_PROTECTION_FOR_EMS_E5",
+                                                    "M365_G3_RPA1_GOV",
+                                                    "M365_G5_GCC",
+                                                    "M365_SECURITY_COMPLIANCE_FOR_FLW",
+                                                    "M365EDU_A3_FACULTY",
+                                                    "M365EDU_A3_STUDENT",
+                                                    "M365EDU_A5_FACULTY",
+                                                    "M365EDU_A5_STUDENT",
+                                                    "MDATP_Server",
+                                                    "MDATP_XPLAT",
+                                                    "Microsoft 365 A3 Suite features for faculty",
+                                                    "Microsoft_365_E3",
+                                                    "Microsoft_365_E3_EEA_(no_Teams)_Unattended_License",
+                                                    "Microsoft_365_E5",
+                                                    "Microsoft_365_E5_EEA_(no_Teams)_with_Calling_Minutes",
+                                                    "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing",
+                                                    "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing_(500_seats_min)_HUB",
+                                                    "Microsoft_365_E5_without_Audio_Conferencing",
+                                                    "Microsoft_Defender_for_Endpoint_F2",
+                                                    "Microsoft_Teams_Rooms_Pro_FAC",
+                                                    "Microsoft_Teams_Rooms_Pro_GCC",
+                                                    "O365_w/o Teams Bundle_M3_(500_seats_min)_HUB",
+                                                    "O365_w/o Teams Bundle_M3",
+                                                    "O365_w/o_Teams_Bundle_M5",
+                                                    "O365_w/o_Teams_Bundle_M5_(500_seats_min)_HUB",
+                                                    "SPE_E3",
+                                                    "SPE_E3_RPA1",
+                                                    "SPE_E5",
+                                                    "SPE_E5_CALLINGMINUTES",
+                                                    "SPE_E5_NOPSTNCONF",
+                                                    "SPE_E5_USGOV_GCCHIGH",
+                                                    "SPE_F5_SEC",
+                                                    "SPE_F5_SECCOMP",
+                                                    "WIN_DEF_ATP",
+                                                    "WIN_ENT_E5",
+                                                    "WIN10_ENT_A5_FAC",
+                                                    "WIN10_VDA_E5",
+                                                    "WINE5_GCC_COMPAT"
+                                                ],
+                                    "Custom": [
+
+                                            ]
+                                }
+
+                    ]
+                },
+                {
+                    "MDI": [
+                                {
+                                    "Default": [
+                                                "ATA",
+                                                "DEVELOPERPACK_E5",
+                                                "EMSPREMIUM",
+                                                "EMSPREMIUM_GOV",
+                                                "EMSPREMIUM_USGOV_GCCHIGH",
+                                                "IDENTITY_THREAT_PROTECTION",
+                                                "M365_G5_GCC",
+                                                "M365_SECURITY_COMPLIANCE_FOR_FLW",
+                                                "M365EDU_A5_FACULTY",
+                                                "M365EDU_A5_NOPSTNCONF_STUUSEBNFT",
+                                                "M365EDU_A5_STUDENT",
+                                                "M365EDU_A5_STUUSEBNFT",
+                                                "Microsoft_365_E5",
+                                                "Microsoft_365_E5_EEA_(no_Teams)_with_Calling_Minutes",
+                                                "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing",
+                                                "Microsoft_365_E5_EEA_(no_Teams)_without_Audio_Conferencing_(500_seats_min)_HUB",
+                                                "Microsoft_365_E5_without_Audio_Conferencing",
+                                                "O365_w/o_Teams_Bundle_M5",
+                                                "O365_w/o_Teams_Bundle_M5_(500_seats_min)_HUB",
+                                                "SPE_E5",
+                                                "SPE_E5_CALLINGMINUTES",
+                                                "SPE_E5_NOPSTNCONF",
+                                                "SPE_E5_USGOV_GCCHIGH",
+                                                "SPE_F5_SEC",
+                                                "SPE_F5_SECCOMP"
+                                            ],
+                                    "Custom":   [
+
+                                                ]
+                                }
+                    ]
+                },
+                {
                     "Teams": [
                                 {
                                     "Default": [
@@ -26,8 +196,6 @@
                                                     "ENTERPRISEPREMIUM_NOPSTNCONF_NOPBI_GOV",
                                                     "ENTERPRISEPREMIUM_STUDENT",
                                                     "ENTERPRISEWITHSCAL",
-                                                    "M365_Copilot",
-                                                    "M365_E5_SUITE_COMPONENTS",
                                                     "M365_F1",
                                                     "M365_F1_COMM",
                                                     "M365_F1_GOV",
@@ -50,16 +218,13 @@
                                                     "MEETING_ROOM_GOV",
                                                     "MEETING_ROOM_GOV_NOAUDIOCONF",
                                                     "MEETING_ROOM_NOAUDIOCONF",
-                                                    "Microsoft_365_Copilot",
                                                     "Microsoft_365_E3",
-                                                    "Microsoft_365_E3_Extra_Features",
                                                     "Microsoft_365_E5",
                                                     "Microsoft_365_E5_without_Audio_Conferencing",
                                                     "MICROSOFT_REMOTE_ASSIST",
                                                     "MICROSOFT_REMOTE_ASSIST_HOLOLENS",
                                                     "Microsoft_Teams_EEA_New",
                                                     "Microsoft_Teams_Exploratory_Dept",
-                                                    "Microsoft_Teams_Premium",
                                                     "Microsoft_Teams_Rooms_Basic",
                                                     "Microsoft_Teams_Rooms_Basic_FAC",
                                                     "Microsoft_Teams_Rooms_Basic_without_Audio_Conferencing",
@@ -95,8 +260,7 @@
                                                     "Teams_Ess",
                                                     "TEAMS_ESSENTIALS_AAD",
                                                     "TEAMS_EXPLORATORY",
-                                                    "TEAMS_FREE",
-                                                    "Teams_Premium_(for_Departments)"
+                                                    "TEAMS_FREE"
                                                 ],
                                     "Custom":   [
                                                     "Microsoft_Teams_Enterprise_New"
