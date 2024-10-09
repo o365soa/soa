@@ -31,7 +31,7 @@
                                                 "SPE_F5_SECCOMP"
                                             ],
                                     "Custom":   [
-
+                                                "AAD_PREMIUM_P2_DOD"
                                                 ]
                                 }
                     ]
@@ -76,7 +76,8 @@
                                                     "THREAT_INTELLIGENCE_GOV"
                                                 ],
                                     "Custom":   [
-                                                    "Microsoft_365 G5_Security_for_GCC"
+                                                    "Microsoft_365 G5_Security_for_GCC",
+                                                    "THREAT_INTELLIGENCE_FAC"
                                                 ]
                                 }
                     ]
