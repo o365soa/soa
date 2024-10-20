@@ -19,7 +19,8 @@ The latest version of the following PowerShell modules is installed:
 * Microsoft.Graph.Authentication (from the Microsoft Graph PowerShell SDK)
 * Active Directory
 
-Note: For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
+> [!NOTE]
+> For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
 
 An application, named "Microsoft Security Assessment", is also registered (created) in your tenant. Details are provided below.
 
@@ -61,9 +62,12 @@ If directory synchronisation is used, a script will need to be executed on a dom
 
    `Install-Module SOA`
 
-3. Run the following to install the prerequisites (**important**: see below for optional parameters that may be applicable):
+3. Run the following to install the prerequisites:
 
    `Install-SOAPrerequisites`
+
+> [!IMPORTANT]
+> See below for optional parameters that may be applicable
 
 ## Optional parameters
 ### Custom (vanity) SharePoint Online domain
