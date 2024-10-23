@@ -623,7 +623,11 @@ function Get-LicenseStatus {
         return $false
     }
     
-    $subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
+    #Get SKUs only if not already retrieved
+    if (-not($subscribedSku)) {
+        Write-Verbose "$(Get-Date) Get-LicenseStatus: Getting subscribed SKUs"
+        $script:subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
+    }
     foreach ($tSku in $targetSkus) {
         foreach ($sku in $subscribedSku.value) {
             if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
