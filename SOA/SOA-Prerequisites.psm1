@@ -611,56 +611,32 @@ Function Get-PSModulePath {
 
 function Get-LicenseStatus {
     param ($LicenseType)
-    switch ($LicenseType) {
-        ATPP2 {
-            # SKUs that start with strings include MDO P2 (for collecting MDO incidents)
-            $targetSkus = @('ENTERPRISEPREMIUM','SPE_E5','SPE_F5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','THREAT_INTELLIGENCE','M365_SECURITY_COMPLIANCE','Microsoft_365 G5_Security','M365_G5',"Microsoft_365_E5")
-        }
-        MDE {
-            # SKUs that start with strings include MDE to be able to use its advanced hunting API
-            $targetSkus = @('DEFENDER_ENDPOINT','IDENTITY','M365_G3_R','M365_G5_GCC','M365_S','M365EDU_A3_STUD','M365EDU_A3_F''M365EDU_A5_STUD','M365EDU_A5_F','MDATP','Microsoft 365 A3 Suite','Microsoft_365_E','Microsoft_D','Microsoft_Teams_Rooms_Pro_F','Microsoft_Teams_Rooms_Pro_G','O365_w/o Teams Bundle_M','O365_w/o_Teams_Bundle_M','SPE_','WIN_','WIN10_ENT_A5','WIN10_VDA_E5','WINE5_G')
-        }
-        MDI {
-            # SKUs that start with strings include MDI
-            $targetSkus = @('EMSPREMIUM','SPE_E5','SPE_F5','M365EDU_A5','IDENTITY_THREAT_PROTECTION','M365_SECURITY_COMPLIANCE','M365_G5','Microsoft_365_E5','ATA')
-        }
-        AADP2 {
-            $targetSkus = @('AAD_PREMIUM_P2','DEVELOPERPACK_E5','EMSPREMIUM','IDENTITY_THREAT_PROTECTION','M365_G5','M365_SEC','M365EDU_A5','Microsoft_365_E5','SPE_E5','SPE_F5')
-        }
-        Teams {
-            $resources = (Get-Content -Path (Join-Path -Path $MyInvocation.MyCommand.Module.ModuleBase -ChildPath resources.json) | ConvertFrom-Json)
-            $defaultSkus = $resources.Sku.Teams.Default 
-            $customSkus = $resources.Sku.Teams.Custom
-            $targetSkus = $defaultSkus + $customSkus
-        }
-        default {
-            Write-Error -Message "$(Get-Date) Invalid license type specified"
-            return $false
-        }
+    $resources = (Get-Content -Path (Join-Path -Path $MyInvocation.MyCommand.Module.ModuleBase -ChildPath resources.json) | ConvertFrom-Json)
+    # SKUs that include service plans: AADP2 (AAD_PREMIUM_P2), MDO P2 (THREAT_INTELLIGENCE), MDE (MDE_LITE, WINDEFATP), MDI (ATA)
+    # SKUs that inclued service plans: Teams (TEAMS1, TEAMS_AR_DOD, TEAMS_AR_GCCHIGH, TEAMS_GOV, TEAMS_FREE, TeamsESS, TEAMSMULTIGEO)
+    if ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI' -or $LicenseType -eq 'Teams') {
+        $defaultSkus = $resources.Sku.$LicenseType.Default 
+        $customSkus = $resources.Sku.$LicenseType.Custom
+        $targetSkus = $defaultSkus + $customSkus
+    } else {
+        Write-Error "$(Get-Date) Get-LicenseStatus: $LicenseType`: Invalid "
+        return $false
     }
     
-    $subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
-    if ($LicenseType -eq "Teams") {
-        # Teams licence check is handled differently because it needs to be an exact match
-        foreach ($tSku in $targetSkus) {
-            foreach ($sku in $subscribedSku.value) {
-                if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
-                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
-                    return $true
-                }
-            }
-        }
-    } else {
-        foreach ($tSku in $targetSkus) {
-            foreach ($sku in $subscribedSku.value) {
-                if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
-                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
-                    return $true
-                }
+    #Get SKUs only if not already retrieved
+    if (-not($subscribedSku)) {
+        Write-Verbose "$(Get-Date) Get-LicenseStatus: Getting subscribed SKUs"
+        $script:subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
+    }
+    foreach ($tSku in $targetSkus) {
+        foreach ($sku in $subscribedSku.value) {
+            if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
+                Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: True "
+                return $true
             }
         }
     }
-    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: False "
+    Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: False "
     return $false
 }
 
@@ -1357,6 +1333,7 @@ Function Get-RequiredAppPermissions {
     }
 
     If ($CloudEnvironment -ne "USGovGCCHigh" -and $CloudEnvironment -ne "USGovDoD"){
+        Write-Verbose "Role for Directory Synchronization will be included in app"
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="bb70e231-92dc-4729-aff5-697b3f04be95"
             Name="OnPremDirectorySynchronization.Read.All"
@@ -1374,7 +1351,7 @@ Function Get-RequiredAppPermissions {
         "China"        {$MDEAvailable=$false}
     }
     if (($HasMDELicense -eq $true -and $MDEAvailable -eq $true) -or $HasATPP2License -eq $true) {
-        Write-Verbose "Adding role for Advanced Hunting to App"
+        Write-Verbose "Role for Advanced Hunting will be included in app"
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="dd98c7f5-2d42-42d3-a0e4-633161547251"
             Name="ThreatHunting.Read.All"
@@ -1392,7 +1369,7 @@ Function Get-RequiredAppPermissions {
         "China"        {$MDIAvailable=$false}
     }
     if ($HasMDILicense -eq $true -and $MDIAvailable -eq $true) {
-        Write-Verbose "Adding Defender for Identity role to App"
+        Write-Verbose "Roles for Defender for Identity will be included in app"
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="f8dcd971-5d83-4e1e-aa95-ef44611ad351"
             Name="SecurityIdentitiesHealth.Read.All"
@@ -2008,13 +1985,13 @@ Function Install-SOAPrerequisites
             $tenantdomain = Get-InitialDomain
 
             $script:MDELicensed = Get-LicenseStatus -LicenseType MDE
-            Write-Verbose "$(Get-Date) Get-LicenseStatus MDE License found: $($script:MDELicensed)"
+            #Write-Verbose "$(Get-Date) Get-LicenseStatus MDE License found: $($script:MDELicensed)"
 
             $script:MDILicensed = Get-LicenseStatus -LicenseType MDI
-            Write-Verbose "$(Get-Date) Get-LicenseStatus MDI License found: $($script:MDILicensed)"
+            #Write-Verbose "$(Get-Date) Get-LicenseStatus MDI License found: $($script:MDILicensed)"
 
             $script:ATPP2Licensed = Get-LicenseStatus -LicenseType ATPP2
-            Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $($script:ATPP2Licensed)"
+            #Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $($script:ATPP2Licensed)"
 
             # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesn't
             $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
