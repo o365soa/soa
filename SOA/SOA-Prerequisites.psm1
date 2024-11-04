@@ -958,7 +958,7 @@ Function Test-Connections {
             "China"        {$cloud = 'China'}
         }
         $ConnContext = (Get-MgContext).Scopes
-        if ($ConnContext -notcontains 'Application.ReadWrite.All' -or ($ConnContext -notcontains 'Organization.Read.All' -and $ConnContext -notcontains 'Directory.Read.All')) {
+        if (($ConnContext -notcontains 'Application.ReadWrite.All' -and $PromptForApplicationSecret -eq $False) -or ($ConnContext -notcontains 'Application.Read.All' -and $PromptForApplicationSecret -eq $True) -or ($ConnContext -notcontains 'Organization.Read.All' -and $ConnContext -notcontains 'Directory.Read.All')) {
             Write-Host "$(Get-Date) Connecting to Microsoft Graph (with delegated authentication)..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -969,7 +969,13 @@ Function Test-Connections {
                     Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
                     # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
                     # Using Organization.Read.All because that is the least-common scope for getting licenses in the app check
-                    Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
+
+                    if ($PromptForApplicationSecret) {
+                        # Request read-only permissions to Graph if manually providing the client secret
+                        Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
+                    } else {
+                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
+                    }
                 }
                 catch {
                     Write-Verbose $_
