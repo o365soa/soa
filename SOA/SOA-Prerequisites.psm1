@@ -1350,16 +1350,17 @@ Function Get-RequiredAppPermissions {
 
     $MDEAvailable = $false
     switch ($CloudEnvironment) {
-        "Commercial"   {$MDEAvailable=$true;break}
-        "USGovGCCHigh" {$MDEAvailable=$true;break}
-        "USGovDoD"     {$MDEAvailable=$true;break}
-        "Germany"      {$MDEAvailable=$false;break}
-        "China"        {$MDEAvailable=$false}
+        "Commercial"   {$MDEAvailable=$true;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251";break}
+        "USGovGCC"     {$MDEAvailable=$true;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251";break}
+        "USGovGCCHigh" {$MDEAvailable=$true;$THId="5f804853-e3b1-447b-9a8b-6d3e1257c72a";break}
+        "USGovDoD"     {$MDEAvailable=$true;$THId="5f804853-e3b1-447b-9a8b-6d3e1257c72a";break}
+        "Germany"      {$MDEAvailable=$false;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251";break}
+        "China"        {$MDEAvailable=$false;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251"}
     }
     if (($HasMDELicense -eq $true -and $MDEAvailable -eq $true) -or $HasATPP2License -eq $true) {
         Write-Verbose "Role for Advanced Hunting will be included in app"
         $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID="dd98c7f5-2d42-42d3-a0e4-633161547251"
+            ID=$THId
             Name="ThreatHunting.Read.All"
             Type='Role'
             Resource="00000003-0000-0000-c000-000000000000" # Graph
@@ -1369,6 +1370,7 @@ Function Get-RequiredAppPermissions {
     $MDIAvailable = $false
     switch ($CloudEnvironment) {
         "Commercial"   {$MDIAvailable=$true;break}
+        "USGovGCC"     {$MDIAvailable=$true;break}
         "USGovGCCHigh" {$MDIAvailable=$true;break}
         "USGovDoD"     {$MDIAvailable=$true;break}
         "Germany"      {$MDIAvailable=$false;break}
