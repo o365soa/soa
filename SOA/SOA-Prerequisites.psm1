@@ -617,7 +617,7 @@ function Get-LicenseStatus {
     if ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI' -or $LicenseType -eq 'Teams') {
         $defaultSkus = $resources.Sku.$LicenseType.Default 
         $customSkus = $resources.Sku.$LicenseType.Custom
-        $targetSkus = $defaultSkus + $customSkus
+        if ($customSkus.Count -gt 0) {$targetSkus = $defaultSkus + $customSkus} else {$targetSkus = $defaultSkus}
     } else {
         Write-Error "$(Get-Date) Get-LicenseStatus: $LicenseType`: Invalid "
         return $false
