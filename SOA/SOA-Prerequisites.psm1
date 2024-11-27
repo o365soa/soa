@@ -612,12 +612,10 @@ Function Get-PSModulePath {
 function Get-LicenseStatus {
     param ($LicenseType)
     $resources = (Get-Content -Path (Join-Path -Path $MyInvocation.MyCommand.Module.ModuleBase -ChildPath resources.json) | ConvertFrom-Json)
-    # SKUs that include service plans: AADP2 (AAD_PREMIUM_P2), MDO P2 (THREAT_INTELLIGENCE), MDE (MDE_LITE, WINDEFATP), MDI (ATA)
-    # SKUs that inclued service plans: Teams (TEAMS1, TEAMS_AR_DOD, TEAMS_AR_GCCHIGH, TEAMS_GOV, TEAMS_FREE, TeamsESS, TEAMSMULTIGEO)
-    if ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI' -or $LicenseType -eq 'Teams') {
-        $defaultSkus = $resources.Sku.$LicenseType.Default 
-        $customSkus = $resources.Sku.$LicenseType.Custom
-        if ($customSkus.Count -gt 0) {$targetSkus = $defaultSkus + $customSkus} else {$targetSkus = $defaultSkus}
+    if ($LicenseType -eq 'Teams') {
+        $targetSkus = ($resources.Sku.$LicenseType.Default + $resources.Sku.$LicenseType.Custom) | Where-Object {$_ -match "[a-z]+"}
+    } elseif ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI') {
+        $targetSkus = $resources.Sku.$LicenseType | Where-Object {$_ -match "[a-z]+"}
     } else {
         Write-Error "$(Get-Date) Get-LicenseStatus: $LicenseType`: Invalid "
         return $false
@@ -638,7 +636,7 @@ function Get-LicenseStatus {
         foreach ($tSku in $targetSkus) {
             foreach ($sku in $subscribedSku.value) {
                 if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
-                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True Matched $($sku.skuPartNumber)"
                     return $true
                 }
             }
@@ -664,7 +662,7 @@ function Get-LicenseStatus {
         foreach ($tSku in $targetSkus) {
             foreach ($sku in $subscribedSku.value) {
                 if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
-                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True Matched $($sku.skuPartNumber)"
                     return $true
                 }
             }
