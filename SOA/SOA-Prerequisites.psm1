@@ -612,12 +612,10 @@ Function Get-PSModulePath {
 function Get-LicenseStatus {
     param ($LicenseType)
     $resources = (Get-Content -Path (Join-Path -Path $MyInvocation.MyCommand.Module.ModuleBase -ChildPath resources.json) | ConvertFrom-Json)
-    # SKUs that include service plans: AADP2 (AAD_PREMIUM_P2), MDO P2 (THREAT_INTELLIGENCE), MDE (MDE_LITE, WINDEFATP), MDI (ATA)
-    # SKUs that inclued service plans: Teams (TEAMS1, TEAMS_AR_DOD, TEAMS_AR_GCCHIGH, TEAMS_GOV, TEAMS_FREE, TeamsESS, TEAMSMULTIGEO)
-    if ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI' -or $LicenseType -eq 'Teams') {
-        $defaultSkus = $resources.Sku.$LicenseType.Default 
-        $customSkus = $resources.Sku.$LicenseType.Custom
-        $targetSkus = $defaultSkus + $customSkus
+    if ($LicenseType -eq 'Teams') {
+        $targetSkus = ($resources.Sku.$LicenseType.Default + $resources.Sku.$LicenseType.Custom) | Where-Object {$_ -match "[a-z]+"}
+    } elseif ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI') {
+        $targetSkus = $resources.Sku.$LicenseType | Where-Object {$_ -match "[a-z]+"}
     } else {
         Write-Error "$(Get-Date) Get-LicenseStatus: $LicenseType`: Invalid "
         return $false
@@ -628,11 +626,45 @@ function Get-LicenseStatus {
         Write-Verbose "$(Get-Date) Get-LicenseStatus: Getting subscribed SKUs"
         $script:subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
     }
-    foreach ($tSku in $targetSkus) {
-        foreach ($sku in $subscribedSku.value) {
-            if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
-                Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: True "
-                return $true
+    if ($LicenseType -eq "Teams") {
+        # Teams licence check is handled differently because it needs to be an exact match
+        if ($HasTeamsLicense) {
+            Write-Verbose "$(Get-Date) Get-LicenseStatus HasTeamsLicense switch used, skipping license check and returning True"
+            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            return $true
+        }
+        foreach ($tSku in $targetSkus) {
+            foreach ($sku in $subscribedSku.value) {
+                if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -eq $tSku) {
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True Matched $($sku.skuPartNumber)"
+                    return $true
+                }
+            }
+        }
+    } else {
+        if ($LicenseType -eq "AADP2" -and $HasEntraP2License) {
+            Write-Verbose "$(Get-Date) Get-LicenseStatus HasEntraP2License switch used, skipping license check and returning True"
+            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            return $true
+        } elseif ($LicenseType -eq "ATPP2" -and $HasMDOP2License) {
+            Write-Verbose "$(Get-Date) Get-LicenseStatus HasMDOP2License switch used, skipping license check and returning True"
+            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            return $true
+        } elseif ($LicenseType -eq "MDE" -and $HasMDELicense) {
+            Write-Verbose "$(Get-Date) Get-LicenseStatus HasMDELicense switch used, skipping license check and returning True"
+            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            return $true
+        } elseif ($LicenseType -eq "MDI" -and $HasMDILicense) {
+            Write-Verbose "$(Get-Date) Get-LicenseStatus HasMDILicense switch used, skipping license check and returning True"
+            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            return $true
+        }
+        foreach ($tSku in $targetSkus) {
+            foreach ($sku in $subscribedSku.value) {
+                if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True Matched $($sku.skuPartNumber)"
+                    return $true
+                }
             }
         }
     }
@@ -1632,7 +1664,22 @@ Function Install-SOAPrerequisites
         [switch]$RemoveExistingEntraApp,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$PromptForApplicationSecret
+        [switch]$PromptForApplicationSecret,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$HasEntraP2License,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$HasMDOP2License,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$HasMDELicense,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$HasMDILicense,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='ModulesOnly')]
+        [switch]$HasTeamsLicense
     )
 
     <#
