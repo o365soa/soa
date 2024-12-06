@@ -34,7 +34,7 @@ If directory synchronization is being used, a collection script will be run on a
 ### Requirements
 
 In order to install the SOA module and run the prerequisites script, you must have the following on the collection machine:
-* PowerShell 5.1 (PowerShell 7 is not supported)
+* PowerShell 5.1 or PowerShell 7.2 or higher
 * PowerShellGet version 2.2.4 or higher
    * The installed versions can be determined by running `Get-Module PowerShellGet -ListAvailable`. If at least PowerShellGet 2.2.4 is not installed, run the following to install the latest version:<br>
    

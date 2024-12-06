@@ -31,6 +31,10 @@
 
 #>
 
+if ($PSVersionTable.PSVersion.Major -eq 7 -and $PSVersionTable.PSVersion -lt [version]"7.2") {
+    throw "When using PowerShell 7, version 7.2 or later is required to use this module."
+}
+
 Function Get-IsAdministrator {
     <#
         Determine if the script is running in the context of an administrator or not
@@ -931,10 +935,22 @@ function Import-PSModule {
         }
         if ($ModuleName -eq 'Microsoft.PowerApps.Administration.PowerShell') {
             # Explicitly load its auth module using SilentlyContinue to suppress warnings due to Recover-* being an unapproved verb in the Auth module
+            # In PS 7, if the auth module is not explicitly loaded, the connect cmdlet is not available
             $PAPath = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).ModuleBase
-            Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force
+            # Power Apps module does not natively support PS 7, so use -UseWindowsPowerShell to load it in a Windows PowerShell session
+            if ($PSVersionTable.PSVersion.Major -ge 7) {
+                Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force -UseWindowsPowerShell    
+            } else {
+                Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force
+            }
         }
-        Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue
+        # SPO and PP modules do not natively support PS 7, so use -UseWindowsPowerShell to load them in a Windows PowerShell session
+        # Teams module 6.7.0 throws assesmbly error when importing natively in PS 7, so use -UseWindowsPowerShell to load it in a Windows PowerShell session
+        if (($ModuleName -eq 'Microsoft.Online.SharePoint.PowerShell' -or $ModuleName -eq 'MicrosoftTeams' -or $ModuleName -eq 'Microsoft.PowerApps.Administration.PowerShell') -and $PSVersionTable.PSVersion.Major -ge 7) {
+            Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue -UseWindowsPowerShell
+        } else {
+            Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue
+        }
         if ($loadError) {
             Write-Error -Message "Error loading module $ModuleName."
         }
@@ -980,7 +996,7 @@ Function Test-Connections {
         $connectToGraph = $true
     }
     if ($connectToGraph -eq $true) {
-        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
@@ -1050,7 +1066,7 @@ Function Test-Connections {
     
     #>
     if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
-        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
     }
 
     If($Bypass -notcontains "SCC") {
@@ -1138,7 +1154,7 @@ Function Test-Connections {
     
     #>
     If($Bypass -notcontains "SPO") {
-        Import-PSModule -ModuleName Microsoft.Online.SharePoint.PowerShell -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName Microsoft.Online.SharePoint.PowerShell -Implicit:$UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1156,7 +1172,7 @@ Function Test-Connections {
             }
 
             # If no error, try test command
-            If($ConnectError) { $Connect = $False; $Command = $False} Else { 
+            If($ConnectError -or $? -eq $false) { $Connect = $False; $Command = $null} Else { 
                 $Connect = $True 
                 # Cmdlet that can be run by anyone
                 Get-SPOSite -Limit 1 -ErrorAction SilentlyContinue -ErrorVariable CommandError -WarningAction SilentlyContinue | Out-Null
@@ -1188,9 +1204,9 @@ Function Test-Connections {
             $TeamsLicensed = (Get-LicenseStatus -LicenseType Teams)
         }
         if ($TeamsLicensed -eq $true) {
-            Import-PSModule -ModuleName MicrosoftTeams -Implicit $UseImplicitLoading
+            Import-PSModule -ModuleName MicrosoftTeams -Implicit:$UseImplicitLoading
             # Reset vars
-            $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+            $Connect = $False; Remove-Variable -Name ConnectError -ErrorAction SilentlyContinue; $Command = $False; $CommandError = $Null
 
             Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
             switch ($CloudEnvironment) {
@@ -1205,9 +1221,9 @@ Function Test-Connections {
             #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
             # If no error, try test command
-            if ($ConnectError) {
+            if ($ConnectError -or $? -eq $false) {
                 $Connect = $False
-                $Command = $False
+                $Command = $null
             }
             else { 
                 $Connect = $true
@@ -1242,7 +1258,7 @@ Function Test-Connections {
             Write-Host "$(Get-Date) Skipping connection to Power Apps because it is not supported in Germany cloud..."
         }
         else {
-            Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit $UseImplicitLoading
+            Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit:$UseImplicitLoading
             # Reset vars
             $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1257,7 +1273,7 @@ Function Test-Connections {
             }
 
             # If no error, try test command
-            if ($ConnectError) { $Connect = $False; $Command = ""} Else { 
+            if ($ConnectError -or $?-eq $false) { $Connect = $False; $Command = $null} Else { 
                 $Connect = $True 
                 # Check if data is returned
                 # Ensure that the correct module is used as Get-DlpPolicy also exists within the Exchange module
@@ -1697,9 +1713,9 @@ Function Install-SOAPrerequisites
     # Detect if running in PS 7
     # Teams supports 7.2, EXO supports 7.0.3, Graph supports 7.0, PP and SPO work in 7.0 when using -UseWindowsPowerShell
     # Therefore, PS 7 blocker will be removed in the future, requiring 7.2+
-    if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
-        throw "Running this script in PowerShell 7 is not supported."
-    }
+    #if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
+    #    throw "Running this script in PowerShell 7 is not supported."
+    #}
 
     switch ($CloudEnvironment) {
         "Commercial"   {$GraphHost = "https://graph.microsoft.com";break}
@@ -1970,10 +1986,12 @@ Function Install-SOAPrerequisites
                     }
                 }
                 
-                # Don't continue to check connections
-                Exit-Script
-                throw "$(Get-Date) The above modules must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
-                
+                # Don't continue to check connections unless the AD module is the only one with an error
+                if ($Modules_Error.Module -eq "ActiveDirectory") {
+                } else {
+                    Exit-Script
+                    throw "$(Get-Date) The above modules must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
+                }
             }
         }
     }
