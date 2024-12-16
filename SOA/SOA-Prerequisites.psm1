@@ -1002,7 +1002,14 @@ Function Test-Connections {
                     # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
                     # Using Organization.Read.All because that is the least-common scope for getting licenses in the app check
 
-                    if ($PromptForApplicationSecret) {
+                    if ($CloudEnvironment -eq "China") {
+                        # Connections to 21Vianet must have provided the ClientID and Tenant manually
+                        if ($null -eq $GraphClientId -or $null -eq $TenantName) {
+                            Exit-Script
+                            throw "$(Get-Date) Connections to Graph in 21Vianet will fail unless the Client ID and Tenant Name are manually provided. Use `-GraphClientId` and `-TenantName` parameters to provide them after the application has been manually registered in your tenant. For more information visit https://github.com/o365soa/soa."
+                        }
+                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -ClientId $GraphClientId -Tenant $TenantName | Out-Null
+                    } elseif ($PromptForApplicationSecret) {
                         # Request read-only permissions to Graph if manually providing the client secret
                         Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
                     } else {
@@ -2011,13 +2018,6 @@ Function Install-SOAPrerequisites
             "China"        {$cloud = 'China'}
         }
 
-        if ($CloudEnvironment -eq "China" -and ($null -eq $GraphClientId -or $null -eq $TenantName)) {
-            # Check whether the Client ID has been manually provided
-
-            Exit-Script
-            throw "$(Get-Date) Connections to Graph in 21Vianet will fail unless the Client ID and Tenant Name are manually provided. Use `-GraphClientId` and `-TenantName` parameters to provide them after the application has been manually registered in your tenant. For more information visit https://github.com/o365soa/soa."           
-        }
-
         $mgContext =  (Get-MgContext).Scopes
         if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -or ($PromptForApplicationSecret)) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
@@ -2031,6 +2031,11 @@ Function Install-SOAPrerequisites
 
                     if ($CloudEnvironment -eq "China") {
                         # Connections to 21Vianet must have provided the ClientID and Tenant manually
+                        if ($null -eq $GraphClientId -or $null -eq $TenantName) {
+                            Exit-Script
+                            throw "$(Get-Date) Connections to Graph in 21Vianet will fail unless the Client ID and Tenant Name are manually provided. Use `-GraphClientId` and `-TenantName` parameters to provide them after the application has been manually registered in your tenant. For more information visit https://github.com/o365soa/soa."
+                        }
+
                         Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -ClientId $GraphClientId -Tenant $TenantName | Out-Null
                     } elseif ($PromptForApplicationSecret) {
                         # Request read-only permissions to Graph if manually providing the client secret
