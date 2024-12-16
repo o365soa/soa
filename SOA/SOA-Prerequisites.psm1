@@ -2013,7 +2013,6 @@ Function Install-SOAPrerequisites
 
         if ($CloudEnvironment -eq "China" -and ($null -eq $GraphClientId -or $null -eq $TenantName)) {
             # Check whether the Client ID has been manually provided
-            Write-Host "It's required to provide the Client ID"
 
             Exit-Script
             throw "$(Get-Date) Connections to Graph in 21Vianet will fail unless the Client ID and Tenant Name are manually provided. Use `-GraphClientId` and `-TenantName` parameters to provide them after the application has been manually registered in your tenant. For more information visit https://github.com/o365soa/soa."           
