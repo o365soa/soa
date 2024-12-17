@@ -88,6 +88,14 @@ If the Office 365 tenant is in a sovereign cloud environment, the `-CloudEnviron
 * Use `Germany` for Microsoft Cloud Germany
 * Use `China` for Azure and Microsoft 365 operated by 21Vianet in China
 
+#### Microsoft Graph App Registration in 21Vianet
+
+The Microsoft apps necessary for Microsoft Graph connections are not automatically synced to tenants operating within 21Vianet, and the App Registration needs to be manually configured to allow delegated connections to Microsoft Graph. 
+
+1. Navigate within the Entra ID portal to Manage / App Registrations and click the 'New registration' button.
+2. Give the App an appropriate name. Leave the 'Supported account types' configured as the default value of Single tenant. Under the Redirect URI section, select 'Public client/native (mobile & desktop)' from the dropdown menu and enter the value `http://localhost`  and complete the registration of the app.
+3. Under the 'Overview' section take note of the 'Application (client) ID' value as this will need to be manually provided when connecting to Graph.
+
 ### Active Directory module
 
 If directory synchronization is used and the Active Directory module is not installed and you cannot run PowerShell as a local admin, you can skip the installation of the module by using `-SkipAdModule`. A machine with the module installed will be needed on the first day of the engagement to collect information about the AD environment. The module can be installed on a machine using `-AdModuleOnly` or manually via another method.
