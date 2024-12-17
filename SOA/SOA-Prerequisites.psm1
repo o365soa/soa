@@ -1315,56 +1315,90 @@ Function Get-RequiredAppPermissions {
     $AppRoles = @()
 
     # Microsoft Graph
-    $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
-        Name="IdentityRiskEvent.Read.All"
-        Type='Role'
-        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    if ($CloudEnvironment -ne "China") {
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
+            Name="IdentityRiskEvent.Read.All"
+            Type='Role'
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
+        }
+    }
+
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "be6befbd-4448-4fb0-bda5-5dc989bd62c4";break}
+        default {$GUID = "dc377aa6-52d8-4e23-b271-2a7ae04cedf3"}
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="dc377aa6-52d8-4e23-b271-2a7ae04cedf3"
+        ID=$GUID
         Name="DeviceManagementConfiguration.Read.All"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "c11814fe-adc9-435b-8b25-9e186dcf7606";break}
+        default {$GUID = "b0afded3-3588-46d8-8b3d-9842eff778da"}
+    }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="b0afded3-3588-46d8-8b3d-9842eff778da"
+        ID=$GUID
         Name="AuditLog.Read.All"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="7ab1d382-f21e-4acd-a863-ba3e13f7da61"
         Name="Directory.Read.All"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "9950d8b9-ffec-4dd5-9c9e-19542b393956";break}
+        default {$GUID = "246dd0d5-5bd0-4def-940b-0421030a5b68"}
+    }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="246dd0d5-5bd0-4def-940b-0421030a5b68"
+        ID=
         Name="Policy.Read.All"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID="78ce3f0f-a1ce-49c2-8cde-64b5c0896db4"
         Name="user_impersonation"
         Type='Scope'
         Resource="00000007-0000-0000-c000-000000000000" # Dynamics 365
     }
+
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "47d70536-eeb5-4b19-b059-f44e0f475f33";break}
+        default {$GUID = "c7fbd983-d9aa-4fa7-84b8-17382c103bc4"}
+    }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="c7fbd983-d9aa-4fa7-84b8-17382c103bc4"
+        ID=$GUID
         Name="RoleManagement.Read.All"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "6f135ef2-d208-48f4-b390-7893518e6950";break}
+        default {$GUID = "01e37dc9-c035-40bd-b438-b2879c4870a6"}
+    }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="01e37dc9-c035-40bd-b438-b2879c4870a6"
+        ID=$GUID
         Name="PrivilegedAccess.Read.AzureADGroup"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
+
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "d90f9f4f-4a37-4b18-8d8b-d774cd8fd2d1";break}
+        default {$GUID = "18a4783c-866b-4cc7-a460-3d5e5662c884"}
+    }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID="18a4783c-866b-4cc7-a460-3d5e5662c884"
+        ID=$GUID
         Name="Application.ReadWrite.OwnedBy"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
@@ -1372,8 +1406,12 @@ Function Get-RequiredAppPermissions {
 
     If ($CloudEnvironment -ne "USGovGCCHigh" -and $CloudEnvironment -ne "USGovDoD"){
         Write-Verbose "Role for Directory Synchronization will be included in app"
+        switch ($CloudEnvironment) {
+            "China" {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe";break}
+            default {$GUID = "bb70e231-92dc-4729-aff5-697b3f04be95"}
+        }
         $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID="bb70e231-92dc-4729-aff5-697b3f04be95"
+            ID=$GUID
             Name="OnPremDirectorySynchronization.Read.All"
             Type='Role'
             Resource="00000003-0000-0000-c000-000000000000" # Graph
