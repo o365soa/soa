@@ -1358,7 +1358,7 @@ Function Get-RequiredAppPermissions {
         default {$GUID = "246dd0d5-5bd0-4def-940b-0421030a5b68"}
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
-        ID=
+        ID=$GUID
         Name="Policy.Read.All"
         Type='Role'
         Resource="00000003-0000-0000-c000-000000000000" # Graph
