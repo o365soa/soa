@@ -617,7 +617,7 @@ function Get-LicenseStatus {
     $resources = (Get-Content -Path (Join-Path -Path $MyInvocation.MyCommand.Module.ModuleBase -ChildPath resources.json) | ConvertFrom-Json)
     if ($LicenseType -eq 'Teams') {
         $targetSkus = ($resources.Sku.$LicenseType.Default + $resources.Sku.$LicenseType.Custom) | Where-Object {$_ -match "[a-z]+"}
-    } elseif ($LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI') {
+    } elseif ($LicenseType -eq 'AADP1' -or $LicenseType -eq 'AADP2' -or $LicenseType -eq 'ATPP2' -or $LicenseType -eq 'MDE' -or $LicenseType -eq 'MDI') {
         $targetSkus = $resources.Sku.$LicenseType | Where-Object {$_ -match "[a-z]+"}
     } else {
         Write-Error "$(Get-Date) Get-LicenseStatus: $LicenseType`: Invalid "
@@ -645,7 +645,11 @@ function Get-LicenseStatus {
             }
         }
     } else {
-        if ($LicenseType -eq "AADP2" -and $HasEntraP2License) {
+        if ($LicenseType -eq "AADP1" -and $HasEntraP1License) {
+            Write-Verbose "$(Get-Date) Get-LicenseStatus HasEntraP1License switch used, skipping license check and returning True"
+            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            return $true
+        } elseif ($LicenseType -eq "AADP2" -and $HasEntraP2License) {
             Write-Verbose "$(Get-Date) Get-LicenseStatus HasEntraP2License switch used, skipping license check and returning True"
             Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
             return $true
@@ -1713,6 +1717,9 @@ Function Install-SOAPrerequisites
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='EntraAppOnly')]
         [switch]$PromptForApplicationSecret,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [switch]$HasEntraP1License,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='EntraAppOnly')]
         [switch]$HasEntraP2License,
