@@ -88,6 +88,17 @@ If the Office 365 tenant is in a sovereign cloud environment, the `-CloudEnviron
 * Use `Germany` for Microsoft Cloud Germany
 * Use `China` for Azure and Microsoft 365 operated by 21Vianet in China
 
+#### Microsoft Graph PowerShell SDK app registration in 21Vianet
+
+Microsoft globally registered applications, including the Graph PowerShell SDK, do not replicate to tenants operated by 21Vianet. This means an app registration must be configured to allow the SDK to connect to Microsoft Graph when using delegated authentication:
+
+1. In the Microsoft Entra portal, navigate to **Manage** / **App registrations** and click the **New registration** button.
+1. Give the app a desired name.
+1. Under **Supported account types**, leave the selection at the default value for a "Single tenant" application.
+1. Under **Redirect URI**, click the drop-down for "Select a platform" and select *Public client/native (mobile & desktop)*, then enter `http://localhost`.
+1. Click the **Register** button.
+1. In the application's **Overview** section, copy the "Application (client) ID" value, which will need to be provided using the `-GraphClientId` parameter when running `Install-SOAPrerequisites` and when running the collection script.
+
 ### Active Directory module
 
 If directory synchronization is used and the Active Directory module is not installed and you cannot run PowerShell as a local admin, you can skip the installation of the module by using `-SkipAdModule`. A machine with the module installed will be needed on the first day of the engagement to collect information about the AD environment. The module can be installed on a machine using `-AdModuleOnly` or manually via another method.

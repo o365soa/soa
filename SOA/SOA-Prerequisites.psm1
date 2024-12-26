@@ -104,9 +104,12 @@ function Get-InitialDomain {
     #>
     
     # Get the default onmicrosoft domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
-    $OrgData = (Invoke-MgGraphRequest GET "$GraphHost/v1.0/organization" -OutputType PSObject).Value
-    return ($OrgData | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.isInitial }).Name 
-
+    if ($InitialDomain) {
+        return $InitialDomain
+    } else {
+        $OrgData = (Invoke-MgGraphRequest GET "$GraphHost/v1.0/organization" -OutputType PSObject).Value
+        return ($OrgData | Select-Object -ExpandProperty VerifiedDomains | Where-Object { $_.isInitial }).Name 
+    }
 }
 
 function Get-SharePointAdminUrl
@@ -125,7 +128,7 @@ function Get-SharePointAdminUrl
         $url = "https://" + $SPOAdminDomain
     }
     else {
-        $tenantName = ((Get-InitialDomain) -split ".onmicrosoft")[0]
+        $tenantName = ((Get-InitialDomain) -split "\.")[0]
         
         switch ($CloudEnvironment) {
             "Commercial"   {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
@@ -998,11 +1001,18 @@ Function Test-Connections {
             do {
                 try {
                     $connCount++
-                    Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
+                    Write-Verbose "$(Get-Date) Test-Connections: Graph Delegated connection attempt #$connCount"
                     # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
                     # Using Organization.Read.All because that is the least-common scope for getting licenses in the app check
 
-                    if ($PromptForApplicationSecret) {
+                    if ($CloudEnvironment -eq "China") {
+                        # Connections to 21Vianet must have provided the ClientID and Tenant manually
+                        if ($null -eq $GraphClientId -or $null -eq $InitialDomain) {
+                            Exit-Script
+                            throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
+                        }
+                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -ClientId $GraphClientId -Tenant $InitialDomain -NoWelcome -ErrorVariable ConnectError| Out-Null
+                    } elseif ($PromptForApplicationSecret) {
                         # Request read-only permissions to Graph if manually providing the client secret
                         Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
                     } else {
@@ -1717,7 +1727,14 @@ Function Install-SOAPrerequisites
         [switch]$HasMDILicense,
     [Parameter(ParameterSetName='Default')]
     [Parameter(ParameterSetName='ModulesOnly')]
-        [switch]$HasTeamsLicense
+        [switch]$HasTeamsLicense,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        $GraphClientId,
+    [Parameter(ParameterSetName='Default')]
+    [Parameter(ParameterSetName='EntraAppOnly')]
+        [ValidateScript({if ($PSItem -match "^\w+.onmicrosoft.(com|us)`$|^\w+.partner.onmschina.cn`$") {$true} else {throw "The value `"$PSItem`" is not a properly formatted initial domain."}})]
+        $InitialDomain
     )
 
     <#
@@ -2024,7 +2041,7 @@ Function Install-SOAPrerequisites
 
     If($ConnectCheck -eq $True) {
         # Proceed to testing connections
-        
+
         $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting -CloudEnvironment $CloudEnvironment)
         
         $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
@@ -2052,8 +2069,17 @@ Function Install-SOAPrerequisites
             do {
                 try {
                     $connCount++
-                    Write-Verbose "$(Get-Date) Graph Delegated connection attempt #$connCount"
-                    if ($PromptForApplicationSecret) {
+                    Write-Verbose "$(Get-Date) Install-SOAPrerequisites: Graph Delegated connection attempt #$connCount"
+
+                    if ($CloudEnvironment -eq "China") {
+                        # Connections to 21Vianet must have manually provided the App ID and tenant name
+                        if ($null -eq $GraphClientId -or $null -eq $InitialDomain) {
+                            Exit-Script
+                            throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
+                        }
+
+                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -ClientId $GraphClientId -Tenant $InitialDomain | Out-Null
+                    } elseif ($PromptForApplicationSecret) {
                         # Request read-only permissions to Graph if manually providing the client secret
                         Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
                     } else {
