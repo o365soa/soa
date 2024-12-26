@@ -88,13 +88,16 @@ If the Office 365 tenant is in a sovereign cloud environment, the `-CloudEnviron
 * Use `Germany` for Microsoft Cloud Germany
 * Use `China` for Azure and Microsoft 365 operated by 21Vianet in China
 
-#### Microsoft Graph App Registration in 21Vianet
+#### Microsoft Graph PowerShell SDK app registration in 21Vianet
 
-The Microsoft apps necessary for Microsoft Graph connections are not automatically synced to tenants operating within 21Vianet, and the App Registration needs to be manually configured to allow delegated connections to Microsoft Graph. 
+Microsoft globally registered applications, including the Graph PowerShell SDK, do not replicate to tenants operated by 21Vianet. This means an app registration must be configured to allow the SDK to connect to Microsoft Graph when using delegated authentication:
 
-1. Navigate within the Entra ID portal to Manage / App Registrations and click the 'New registration' button.
-2. Give the App an appropriate name. Leave the 'Supported account types' configured as the default value of Single tenant. Under the Redirect URI section, select 'Public client/native (mobile & desktop)' from the dropdown menu and enter the value `http://localhost`  and complete the registration of the app.
-3. Under the 'Overview' section take note of the 'Application (client) ID' value as this will need to be manually provided when connecting to Graph.
+1. In the Microsoft Entra portal, navigate to **Manage** / **App registrations** and click the **New registration** button.
+1. Give the app a desired name.
+1. Under **Supported account types**, leave the selection at the default value for a "Single tenant" application.
+1. Under **Redirect URI**, click the drop-down for "Select a platform" and select *Public client/native (mobile & desktop)*, then enter `http://localhost`.
+1. Click the **Register** button.
+1. In the application's **Overview** section, copy the "Application (client) ID" value, which will need to be provided using the `-GraphClientId` parameter when running `Install-SOAPrerequisites` and when running the collection script.
 
 ### Active Directory module
 
