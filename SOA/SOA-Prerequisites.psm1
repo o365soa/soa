@@ -625,7 +625,7 @@ function Get-LicenseStatus {
     }
     
     #Get SKUs only if not already retrieved
-    if (-not($subscribedSku)) {
+    if (-not $subscribedSku) {
         Write-Verbose "$(Get-Date) Get-LicenseStatus: Getting subscribed SKUs"
         $script:subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
     }
@@ -1011,7 +1011,7 @@ Function Test-Connections {
 
                     if ($CloudEnvironment -eq "China") {
                         # Connections to 21Vianet must have provided the ClientID and Tenant manually
-                        if ($null -eq $GraphClientId -or $null -eq $InitialDomain) {
+                        if (-not $GraphClientId -or -not $InitialDomain ) {
                             Exit-Script
                             throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
                         }
@@ -1157,7 +1157,7 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         # Connect only if SPO admin domain provided or if not provided but Graph SDK is connected
-        if ($SPOAdminDomain -or (-not($SPOAdminDomain) -and $GraphSDKConnected -eq $true)) {
+        if ($SPOAdminDomain -or (-not $SPOAdminDomain -and $GraphSDKConnected -eq $true)) {
             $adminUrl = Get-SharePointAdminUrl -CloudEnvironment $CloudEnvironment
             Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
             switch ($CloudEnvironment) {
@@ -1276,12 +1276,12 @@ Function Test-Connections {
                 # Check if data is returned
                 # Ensure that the correct module is used as Get-DlpPolicy also exists within the Exchange module
                 $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction:SilentlyContinue -ErrorVariable:CommandError
-                if ($CommandError -or -not($cmdResult)) {
+                if ($CommandError -or -not $cmdResult) {
                     # Cmdlet may not return data if no PA license assigned or user has not been to PPAC before
                     Write-Warning -Message "No data was returned when running the test command. This can occur if the admin has never used the Power Platform Admin Center (PPAC). Please go to https://aka.ms/ppac and sign in as the Global administrator or Dynamics 365 administrator account you used to connect to Power Platform in PowerShell.  Then return here to continue."
                     Read-Host -Prompt "Press Enter after you have navigated to PPAC and signed in with the adminstrator account used above to connect to Power Platform in PowerShell."
                     $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction:SilentlyContinue -ErrorVariable:CommandError
-                    if ($CommandError -or -not($cmdResult)) {
+                    if ($CommandError -or -not $cmdResult) {
                         $Command = $False
                     }
                     else {
@@ -2080,7 +2080,7 @@ Function Install-SOAPrerequisites
 
                     if ($CloudEnvironment -eq "China") {
                         # Connections to 21Vianet must have manually provided the App ID and tenant name
-                        if ($null -eq $GraphClientId -or $null -eq $InitialDomain) {
+                        if (-not $GraphClientId -or -not $InitialDomain) {
                             Exit-Script
                             throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
                         }
