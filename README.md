@@ -78,16 +78,6 @@ If you use a custom domain to connect to the SharePoint Online admin endpoint (s
 
 If traffic to Microsoft 365 routes via proxy infrastructure and the prerequisites installation fails because of this, try again with `-UseProxy`.
 
-### Sovereign clouds
-
-If the Office 365 tenant is in a sovereign cloud environment, the `-CloudEnvironment` parameter must be used with one of the values below. (The default value is `Commercial`, so the parameter is only required for non-commercial clouds):
-
-* Use `USGovGCC` for Microsoft Cloud for US Government (GCC\GCC-Moderate)
-* Use `USGovGCCHigh` for Microsoft Cloud for US Government L4 (GCC-High)
-* Use `USGovDoD` for Microsoft Cloud for US Government L5 (DOD)
-* Use `Germany` for Microsoft Cloud Germany
-* Use `China` for Azure and Microsoft 365 operated by 21Vianet in China
-
 #### Microsoft Graph PowerShell SDK app registration in 21Vianet
 
 Microsoft globally registered applications, including the Graph PowerShell SDK, do not replicate to tenants operated by 21Vianet. This means an app registration must be configured to allow the SDK to connect to Microsoft Graph when using delegated authentication:
