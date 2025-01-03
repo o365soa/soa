@@ -40,9 +40,10 @@ Function Get-IsAdministrator {
     Return $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 }
 
-Function Exit-Script {
+function Exit-Script {
+    Remove-Variable -Name subscribedSku -Scope Script -ErrorAction SilentlyContinue
+    Remove-Variable -Name *Licensed -Scope Script -ErrorAction SilentlyContinue
     Stop-Transcript
-    
 }
 
 Function Get-PowerShellCount
@@ -98,9 +99,48 @@ function Get-SOADirectory
 
 }
 
+function Get-CloudEnvironment {
+    param (
+        $UPN
+    )
+
+    $domain = $UPN.Split("@")[1]
+    try {
+        $response = Invoke-RestMethod -Uri "https://login.microsoftonline.com/$domain/.well-known/openid-configuration"
+    } catch {
+        Write-Verbose "$(Get-Date) Get-CloudEnvironment: Error executing call to get cloud environment for $domain"
+        Write-Verbose "$(Get-Date) Error: $($_.Exception.Message)"
+        throw
+    }
+
+    if ($response.tenant_region_scope) {
+        if ($response.tenant_region_sub_scope -eq 'GCC') {
+            Write-Verbose "$(Get-Date) Get-CloudEnvironment: Environment for $domain is USGovGCC"
+            return 'USGovGCC'
+        }
+        if ($response.tenant_region_sub_scope -eq 'DODCON') {
+            Write-Verbose "$(Get-Date) Get-CloudEnvironment: Environment for $domain is USGovGCCHigh"
+            return 'USGovGCCHigh'
+        }
+        if ($response.tenant_region_sub_scope -eq 'DOD') {
+            Write-Verbose "$(Get-Date) Get-CloudEnvironment: Environment for $domain is USGovDoD"
+            return 'USGovDoD'
+        }
+        if ($response.cloud_instance_name -eq 'partner.microsoftonline.cn') {
+            Write-Verbose "$(Get-Date) Get-CloudEnvironment: Environment for $domain is China"
+            return 'China'
+        }
+        Write-Verbose "$(Get-Date) Get-CloudEnvironment: Environment for $domain is Commercial"
+        return 'Commercial'
+    } else {
+        throw
+    }
+
+}
+
 function Get-InitialDomain {
     <#
-        Used during connection tests for SPO and Teams
+        Used during connection tests for Graph SDK and SPO
     #>
     
     # Get the default onmicrosoft domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
@@ -135,7 +175,6 @@ function Get-SharePointAdminUrl
             "USGovGCC"     {$url = "https://" + $tenantName + "-admin.sharepoint.com";break}
             "USGovGCCHigh" {$url = "https://" + $tenantName + "-admin.sharepoint.us";break}
             "USGovDoD"     {$url = "https://" + $tenantName + "-admin.dps.mil";break}
-            "Germany"      {$url = "https://" + $tenantName + "-admin.sharepoint.de";break}
             "China"        {$url = "https://" + $tenantName + "-admin.sharepoint.cn"}
         }
     }
@@ -655,21 +694,21 @@ function Get-LicenseStatus {
             return $true
         } elseif ($LicenseType -eq "ATPP2" -and $HasMDOP2License) {
             Write-Verbose "$(Get-Date) Get-LicenseStatus HasMDOP2License switch used, skipping license check and returning True"
-            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: True "
             return $true
         } elseif ($LicenseType -eq "MDE" -and $HasMDELicense) {
             Write-Verbose "$(Get-Date) Get-LicenseStatus HasMDELicense switch used, skipping license check and returning True"
-            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: True "
             return $true
         } elseif ($LicenseType -eq "MDI" -and $HasMDILicense) {
             Write-Verbose "$(Get-Date) Get-LicenseStatus HasMDILicense switch used, skipping license check and returning True"
-            Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
+            Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: True "
             return $true
         }
         foreach ($tSku in $targetSkus) {
             foreach ($sku in $subscribedSku.value) {
                 if ($sku.prepaidUnits.enabled -gt 0 -or $sku.prepaidUnits.warning -gt 0 -and $sku.skuPartNumber -match $tSku) {
-                    Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True Matched $($sku.skuPartNumber)"
+                    Write-Verbose "$(Get-Date) Get-LicenseStatus: $LicenseType`: True Matched $($sku.skuPartNumber)"
                     return $true
                 }
             }
@@ -880,9 +919,7 @@ Function Get-ManualModules
 }
 
 Function Invoke-SOAModuleCheck {
-    param (
-        [string]$CloudEnvironment
-    )
+
     $RequiredModules = @()
     
     # Conflict modules are modules which their presence causes issues
@@ -892,17 +929,8 @@ Function Invoke-SOAModuleCheck {
     If($Bypass -notcontains "SPO") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
     If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
     If (($Bypass -notcontains "EXO" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
-    If ($Bypass -notcontains "PP") {
-        if ($CloudEnvironment -eq "Germany") {
-            Write-Host "$(Get-Date) Skipping Power Apps module because Power Platform isn't supported in Germany cloud..."
-        }
-        else {
-            $RequiredModules += "Microsoft.PowerApps.Administration.PowerShell"
-        }
-    }
-    If($Bypass -notcontains "Graph") {
-        $RequiredModules += "Microsoft.Graph.Authentication"
-    }
+    If ($Bypass -notcontains "PP") {$RequiredModules += "Microsoft.PowerApps.Administration.PowerShell"}
+    If($Bypass -notcontains "Graph") {$RequiredModules += "Microsoft.Graph.Authentication"}
     If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
     $ModuleCheckResult = @()
@@ -993,7 +1021,6 @@ Function Test-Connections {
             "USGovGCC"     {$cloud = 'Global'}
             "USGovGCCHigh" {$cloud = 'USGov'}
             "USGovDoD"     {$cloud = 'USGovDoD'}
-            "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
         $ConnContext = (Get-MgContext).Scopes
@@ -1072,14 +1099,25 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
-        switch ($CloudEnvironment) {
-            "Commercial"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ShowBanner:$False | Out-Null;break}
-            "USGovGCC"   {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ShowBanner:$False | Out-Null;break}
-            "USGovGCCHigh" {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -ShowBanner:$False | Out-Null;break}
-            "USGovDoD"     {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -ShowBanner:$False | Out-Null;break}
-            "Germany"      {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.outlook.de/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.de/common -ShowBanner:$False | Out-Null;break}
-            "China"        {ExchangeOnlineManagement\Connect-IPPSSession -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -ShowBanner:$False | Out-Null}
+        # Commented Jan 3, 2025 because don't know that the connection removal is necessary anymore
+        # Removing existing connections in case any use a prefix
+        # Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
+        if ($NoAdminUPN) {
+            switch ($CloudEnvironment) {
+                "Commercial"   {Connect-IPPSSession -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+            }
+        } else {
+            switch ($CloudEnvironment) {
+                "Commercial"   {Connect-IPPSSession -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ShowBanner:$False | Out-Null}
+                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ShowBanner:$False | Out-Null}
+                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+            }
         }
 
         If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") { $Connect = $True } Else { $Connect = $False }
@@ -1113,13 +1151,23 @@ Function Test-Connections {
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        switch ($CloudEnvironment) {
-            "Commercial"   {Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "USGovGCC"     {Connect-ExchangeOnline -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "Germany"      {Connect-ExchangeOnline -ExchangeEnvironmentName O365GermanyCloud -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null;break}
-            "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -ShowBanner:$false -WarningAction:SilentlyContinue -ErrorVariable:ConnectErrors -PSSessionOption $RPSProxySetting | Out-Null}
+        if ($NoAdminUPN) {
+            switch ($CloudEnvironment) {
+                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+            }
+        }
+        else {
+            switch ($CloudEnvironment) {
+                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+            }
         }
        
         If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") { $Connect = $True } Else { $Connect = $False }
@@ -1160,15 +1208,15 @@ Function Test-Connections {
         if ($SPOAdminDomain -or (-not $SPOAdminDomain -and $GraphSDKConnected -eq $true)) {
             $adminUrl = Get-SharePointAdminUrl -CloudEnvironment $CloudEnvironment
             Write-Host "$(Get-Date) Connecting to SharePoint Online (using $adminUrl)..."
+            # Using the Credential parameter with a username will prompt for Basic auth creds
             switch ($CloudEnvironment) {
-                "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCC"     {Connect-SPOService -Url $adminUrl -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "Germany"      {Connect-SPOService -Url $adminUrl -Region Germany -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null;break}
-                "China"        {Connect-SPOService -Url $adminUrl -Region China -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "Commercial"   {Connect-SPOService -Url $adminUrl -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovGCC"     {Connect-SPOService -Url $adminUrl -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovGCCHigh" {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "USGovDoD"     {Connect-SPOService -Url $adminUrl -Region ITAR -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+                "China"        {Connect-SPOService -Url $adminUrl -Region China -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
             }
-
+            
             # If no error, try test command
             If($ConnectError) { $Connect = $False; $Command = $False} Else { 
                 $Connect = $True 
@@ -1207,16 +1255,16 @@ Function Test-Connections {
             $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
             Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
-            switch ($CloudEnvironment) {
-                "Commercial"    {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovGCC"      {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovDoD"      {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
-                #"Germany"      {"Status of Teams in Germany cloud is unknown";break}
-                "China"         {Write-Host "Teams is not available in 21Vianet offering";break}
-                default         {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+            # Although the connection cmdlet supports providing an account ID, if used it will force the user to [re-]authenticate rather than presenting the account picker
+            if ($NoAdminUPN) {
+                switch ($CloudEnvironment) {
+                    "Commercial"    {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+                    "USGovGCC"      {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+                    "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
+                    "USGovDoD"      {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
+                    "China"         {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsChina } catch {New-Variable -Name ConnectError -Value $true}}
+                }
             }
-            #Leaving a 'default' entry to catch Germany until status can be determined, attempting standard connection
 
             # If no error, try test command
             if ($ConnectError) {
@@ -1252,54 +1300,59 @@ Function Test-Connections {
     
     #>
     If($Bypass -notcontains 'PP') {
-        if ($CloudEnvironment -eq 'Germany') {
-            Write-Host "$(Get-Date) Skipping connection to Power Apps because it is not supported in Germany cloud..."
-        }
-        else {
-            Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit $UseImplicitLoading
-            # Reset vars
-            $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
-            Write-Host "$(Get-Date) Connecting to Power Apps..."
+        Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit $UseImplicitLoading
+        # Reset vars
+        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+
+        Write-Host "$(Get-Date) Connecting to Power Apps..."
+        if ($NoAdminUPN) {
             switch ($CloudEnvironment) {
-                "Commercial"   {try{Add-PowerAppsAccount | Out-Null}catch{$ConnectError=$_};break}
-                "USGovGCC"     {try{Add-PowerAppsAccount -Endpoint usgov | Out-Null}catch{$ConnectError=$_};break}
-                "USGovGCCHigh" {try{Add-PowerAppsAccount -Endpoint usgovhigh | Out-Null}catch{$ConnectError=$_};break}
-                "USGovDoD"     {try{Add-PowerAppsAccount -Endpoint dod | Out-Null}catch{$ConnectError=$_};break}
-                #"Germany"     {"Power Platform is not available in Germany" | Out-Null;break}
+                "Commercial"   {try{Add-PowerAppsAccount | Out-Null}catch{$ConnectError=$_}}
+                "USGovGCC"     {try{Add-PowerAppsAccount -Endpoint usgov | Out-Null}catch{$ConnectError=$_}}
+                "USGovGCCHigh" {try{Add-PowerAppsAccount -Endpoint usgovhigh | Out-Null}catch{$ConnectError=$_}}
+                "USGovDoD"     {try{Add-PowerAppsAccount -Endpoint dod | Out-Null}catch{$ConnectError=$_}}
                 "China"        {try{Add-PowerAppsAccount -Endpoint china | Out-Null}catch{$ConnectError=$_}}
             }
+        } else {
+            switch ($CloudEnvironment) {
+                "Commercial"   {try{Add-PowerAppsAccount -UserName $AdminUPN | Out-Null}catch{$ConnectError=$_}}
+                "USGovGCC"     {try{Add-PowerAppsAccount -Endpoint usgov -UserName $AdminUPN | Out-Null}catch{$ConnectError=$_}}
+                "USGovGCCHigh" {try{Add-PowerAppsAccount -Endpoint usgovhigh -UserName $AdminUPN | Out-Null}catch{$ConnectError=$_}}
+                "USGovDoD"     {try{Add-PowerAppsAccount -Endpoint dod -UserName $AdminUPN | Out-Null}catch{$ConnectError=$_}}
+                "China"        {try{Add-PowerAppsAccount -Endpoint china -UserName $AdminUPN | Out-Null}catch{$ConnectError=$_}}
+            }
+        }
 
-            # If no error, try test command
-            if ($ConnectError) { $Connect = $False; $Command = ""} Else { 
-                $Connect = $True 
-                # Check if data is returned
-                # Ensure that the correct module is used as Get-DlpPolicy also exists within the Exchange module
-                $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction:SilentlyContinue -ErrorVariable:CommandError
+        # If no error, try test command
+        if ($ConnectError) { $Connect = $False; $Command = ""} Else { 
+            $Connect = $True 
+            # Check if data is returned
+            # Ensure that the correct module is used as Get-DlpPolicy also exists within the Exchange module
+            $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction SilentlyContinue -ErrorVariable CommandError
+            if ($CommandError -or -not $cmdResult) {
+                # Cmdlet may not return data if no PA license assigned or user has not been to PPAC before
+                Write-Warning -Message "No data was returned when running the test command. This can occur if the admin has never used the Power Platform Admin Center (PPAC). Please go to https://aka.ms/ppac and sign in as the Global administrator or Dynamics 365 administrator account you used to connect to Power Platform in PowerShell.  Then return here to continue."
+                Read-Host -Prompt "Press Enter after you have navigated to PPAC and signed in with the adminstrator account used above to connect to Power Platform in PowerShell."
+                $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction SilentlyContinue -ErrorVariable CommandError
                 if ($CommandError -or -not $cmdResult) {
-                    # Cmdlet may not return data if no PA license assigned or user has not been to PPAC before
-                    Write-Warning -Message "No data was returned when running the test command. This can occur if the admin has never used the Power Platform Admin Center (PPAC). Please go to https://aka.ms/ppac and sign in as the Global administrator or Dynamics 365 administrator account you used to connect to Power Platform in PowerShell.  Then return here to continue."
-                    Read-Host -Prompt "Press Enter after you have navigated to PPAC and signed in with the adminstrator account used above to connect to Power Platform in PowerShell."
-                    $cmdResult = Microsoft.PowerApps.Administration.PowerShell\Get-DlpPolicy -ErrorAction:SilentlyContinue -ErrorVariable:CommandError
-                    if ($CommandError -or -not $cmdResult) {
-                        $Command = $False
-                    }
-                    else {
-                        $Command = $true
-                    }
+                    $Command = $False
                 }
                 else {
-                    $Command = $True
+                    $Command = $true
                 }
             }
-
-            $Connections += New-Object -TypeName PSObject -Property @{
-                Name="PowerApps"
-                Connected=$Connect
-                ConnectErrors=$ConnectError
-                TestCommand=$Command
-                TestCommandErrors=$CommandError
+            else {
+                $Command = $True
             }
+        }
+
+        $Connections += New-Object -TypeName PSObject -Property @{
+            Name="PowerApps"
+            Connected=$Connect
+            ConnectErrors=$ConnectError
+            TestCommand=$Command
+            TestCommandErrors=$CommandError
         }
     }
 
@@ -1673,75 +1726,77 @@ Function Test-SOAApplication
                 
 }
 
-Function Install-SOAPrerequisites
-{
+Function Install-SOAPrerequisites {
     [CmdletBinding(DefaultParametersetname="Default")]
     Param (
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ConnectOnly')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [ValidateSet("EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
-    [switch]$UseProxy,
-    [Parameter(DontShow)][Switch]$AllowMultipleWindows,
-    [Parameter(DontShow)][switch]$NoVersionCheck,
-    [switch]$RemoveMultipleModuleVersions,
-    [switch]$UseImplicitLoading,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ConnectOnly')]
-        [ValidateScript({if (Resolve-DnsName -Name $PSItem) {$true} else {throw "SPO admin domain does not resolve.  Verify you entered a valid fully qualified domain name."}})]
-    [ValidateNotNullOrEmpty()][string]$SPOAdminDomain,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$DoNotRemediate,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ConnectOnly')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [Alias('O365EnvironmentName')][ValidateSet("Commercial", "USGovGCC", "USGovGCCHigh", "USGovDoD", "Germany", "China")][string]$CloudEnvironment="Commercial",
-    [Parameter(ParameterSetName='ConnectOnly')]
-        [switch]$ConnectOnly,
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [switch]$ModulesOnly,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [switch]$SkipADModule,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [switch]$ADModuleOnly,
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [Alias('AzureADAppOnly')][switch]$EntraAppOnly,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$RemoveExistingEntraApp,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$PromptForApplicationSecret,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$HasEntraP1License,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$HasEntraP2License,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$HasMDOP2License,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$HasMDELicense,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [switch]$HasMDILicense,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='ModulesOnly')]
-        [switch]$HasTeamsLicense,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        $GraphClientId,
-    [Parameter(ParameterSetName='Default')]
-    [Parameter(ParameterSetName='EntraAppOnly')]
-        [ValidateScript({if ($PSItem -match "^\w+.onmicrosoft.(com|us)`$|^\w+.partner.onmschina.cn`$") {$true} else {throw "The value `"$PSItem`" is not a properly formatted initial domain."}})]
-        $InitialDomain
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ConnectOnly')]
+        [Parameter(ParameterSetName='ModulesOnly')]
+            [ValidateSet("EXO","SCC","SPO","PP","Teams","Graph","ActiveDirectory")][string[]]$Bypass,
+        [switch]$UseProxy,
+        [Parameter(DontShow)][Switch]$AllowMultipleWindows,
+        [Parameter(DontShow)][switch]$NoVersionCheck,
+        [switch]$RemoveMultipleModuleVersions,
+        [switch]$UseImplicitLoading,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ConnectOnly')]
+            [ValidateScript({if (Resolve-DnsName -Name $PSItem) {$true} else {throw "SPO admin domain does not resolve.  Verify you entered a valid fully qualified domain name."}})]
+        [ValidateNotNullOrEmpty()][string]$SPOAdminDomain,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ModulesOnly')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$DoNotRemediate,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ConnectOnly')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+        [Parameter(ParameterSetName='ModulesOnly')]
+            [Alias('O365EnvironmentName')][ValidateSet("Commercial","USGovGCC","USGovGCCHigh","USGovDoD","China")][string]$CloudEnvironment,
+        [Parameter(ParameterSetName='ConnectOnly')]
+            [switch]$ConnectOnly,
+        [Parameter(ParameterSetName='ModulesOnly')]
+            [switch]$ModulesOnly,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ModulesOnly')]
+            [switch]$SkipADModule,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ModulesOnly')]
+            [switch]$ADModuleOnly,
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [Alias('AzureADAppOnly')][switch]$EntraAppOnly,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$RemoveExistingEntraApp,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$PromptForApplicationSecret,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$HasEntraP1License,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$HasEntraP2License,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$HasMDOP2License,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$HasMDELicense,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [switch]$HasMDILicense,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ModulesOnly')]
+            [switch]$HasTeamsLicense,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            $GraphClientId,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='EntraAppOnly')]
+            [ValidateScript({if ($PSItem -match "^\w+.onmicrosoft.(com|us)`$|^\w+.partner.onmschina.cn`$") {$true} else {throw "The value `"$PSItem`" is not a properly formatted initial domain."}})]
+            $InitialDomain,
+        [ValidateScript({if ($PSItem -match "^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*`$") {$true} else {throw "The value `"$PSItem`" is not a properly formatted UPN."}})]
+            [string]$AdminUPN,
+        [switch]$NoAdminUPN
     )
 
     <#
@@ -1757,21 +1812,11 @@ Function Install-SOAPrerequisites
         }
 
     # Detect if running in PS 7
-    # Teams supports 7.2, EXO supports 7.0.3, Graph supports 7.0, PP and SPO work in 7.0 when using -UseWindowsPowerShell
-    # Therefore, PS 7 blocker will be removed in the future, requiring 7.2+
+    # Teams supports 7.2, EXO supports 7.0.3, Graph supports 7.0, PP and SPO do not natively support 7 (but generally work when using -UseWindowsPowerShell)
     if ($PSVersionTable.PSVersion.ToString() -like "7.*") {
         throw "Running this script in PowerShell 7 is not supported."
     }
 
-    switch ($CloudEnvironment) {
-        "Commercial"   {$GraphHost = "https://graph.microsoft.com";break}
-        "USGovGCC"     {$GraphHost = "https://graph.microsoft.com";break}
-        "USGovGCCHigh" {$GraphHost = "https://graph.microsoft.us";break}
-        "USGovDoD"     {$GraphHost = "https://dod-graph.microsoft.us";break}
-        "Germany"      {$GraphHost = "https://graph.microsoft.de";break}
-        "China"        {$GraphHost = "https://microsoftgraph.chinacloudapi.cn"}
-    }
-    
     # Default run
     $ConnectCheck = $True
     $ModuleCheck = $True
@@ -1830,7 +1875,7 @@ Function Install-SOAPrerequisites
     }
     else {    
         # Check for newer version
-        Write-Host "$(Get-Date) Performing version check of the SOA module..."
+        Write-Host "$(Get-Date) Checking if the latest version of the SOA module is installed..."
         $VersionCheck = Invoke-SOAVersionCheck
         If($VersionCheck.NewerAvailable -eq $true)
         {
@@ -1972,7 +2017,7 @@ Function Install-SOAPrerequisites
 
         Write-Host "$(Get-Date) Checking modules..."
 
-        $ModuleCheckResult = Invoke-SOAModuleCheck -CloudEnvironment $CloudEnvironment
+        $ModuleCheckResult = Invoke-SOAModuleCheck
 
         if ($RemoveMultipleModuleVersions) {
             $Modules_OK = @($ModuleCheckResult | Where-Object {$_.Installed -eq $True -and $_.Multiple -eq $False -and $_.NewerAvailable -ne $true})
@@ -2047,6 +2092,29 @@ Function Install-SOAPrerequisites
     #>
 
     If($ConnectCheck -eq $True) {
+        # Get the cloud environment if not provided
+        if (-not $CloudEnvironment) {
+            if (-not $AdminUPN) {
+                if ($NoAdminUPN) {
+                    Write-Error -Message "When NoAdminUPN is used, the cloud environment must be provided using the CloudEnvironment parameter."
+                    Exit-Script
+                } else {
+                    # Get Admin UPN
+                    do {
+                        $AdminUPN = Read-Host -Prompt "Enter the UPN of the account that will be used to connect to Microsoft 365. (If providing a UPN is causing authentication issues, you can press Ctrl-C to abort the script and run it again with the NoAdminUPN and CloudEnvironment parameters.)"
+                    }
+                    until ($AdminUPN -match "^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$")
+                    Write-Host ""
+                }
+            } 
+            try {
+                $CloudEnvironment = Get-CloudEnvironment -UPN $AdminUPN
+            } catch {
+                Exit-Script
+                throw "There was an error determining the cloud environment for $UPN. Use the CloudEnvironment parameter to specify a cloud."
+            }
+        }
+
         # Proceed to testing connections
 
         $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting -CloudEnvironment $CloudEnvironment)
@@ -2056,6 +2124,29 @@ Function Install-SOAPrerequisites
     }
 
     If($EntraAppCheck -eq $True) {
+        
+        # Get the cloud environment if not provided
+        if (-not $CloudEnvironment) {
+            if (-not $AdminUPN) {
+                if ($NoAdminUPN) {
+                    Write-Error -Message "When NoAdminUPN is used, the cloud instance must be provided using the CloudEnvironment parameter."
+                    Exit-Script
+                } else {
+                    # Get Admin UPN
+                    do {
+                        $AdminUPN = Read-Host -Prompt "Enter the UPN of the account that will be used to connect to Microsoft 365. (If providing a UPN is causing authentication issues, you can press Ctrl-C to abort the script and run it again with the NoAdminUPN and CloudEnvironment parameters.)"
+                    }
+                    until ($AdminUPN -match "^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$")
+                    Write-Host ""
+                }
+            } 
+            try {
+                $CloudEnvironment = Get-CloudEnvironment -UPN $AdminUPN
+            } catch {
+                Exit-Script
+                throw "There was an error determining the cloud environment for $UPN. Use the CloudEnvironment parameter to specify a cloud instance."
+            }
+        }
 
         # When EntraAppOnly is used, this script may not be connected to Microsoft Graph
         switch ($CloudEnvironment) {
@@ -2063,7 +2154,6 @@ Function Install-SOAPrerequisites
             "USGovGCC"     {$cloud = 'Global'}
             "USGovGCCHigh" {$cloud = 'USGov'}
             "USGovDoD"     {$cloud = 'USGovDoD'}
-            "Germany"      {$cloud = 'Germany'}
             "China"        {$cloud = 'China'}
         }
 
@@ -2339,6 +2429,7 @@ Function Install-SOAPrerequisites
     New-Object -TypeName PSObject -Property @{
         Date=(Get-Date).DateTime
         Version=$version
+        Cloud=$CloudEnvironment
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
