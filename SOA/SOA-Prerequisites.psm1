@@ -995,8 +995,6 @@ function Import-PSModule {
             Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force
         }
         Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue
-        $Current = (Get-Module -Name $ModuleName).Version.ToString()
-        Write-Host "Version that's currently loaded for $ModuleName is $Current"
         if ($loadError) {
             Write-Error -Message "Error loading module $ModuleName."
         }
