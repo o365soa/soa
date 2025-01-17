@@ -1,0 +1,22 @@
+[
+    {
+        "ModuleName": "Microsoft.Online.SharePoint.PowerShell",
+        "MaximumVersion": ""
+    },
+    {
+        "ModuleName": "MicrosoftTeams",
+        "MaximumVersion": ""
+    },
+    {
+        "ModuleName": "ExchangeOnlineManagement",
+        "MaximumVersion": "3.6.0"
+    },
+    {
+        "ModuleName": "Microsoft.PowerApps.Administration.PowerShell",
+        "MaximumVersion": ""
+    },
+    {
+        "ModuleName": "Microsoft.Graph.Authentication",
+        "MaximumVersion": ""
+    }
+]
