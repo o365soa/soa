@@ -1256,14 +1256,12 @@ Function Test-Connections {
 
             Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
             # Although the connection cmdlet supports providing an account ID, if used it will force the user to [re-]authenticate rather than presenting the account picker
-            if ($NoAdminUPN) {
-                switch ($CloudEnvironment) {
-                    "Commercial"    {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
-                    "USGovGCC"      {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
-                    "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
-                    "USGovDoD"      {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
-                    "China"         {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsChina } catch {New-Variable -Name ConnectError -Value $true}}
-                }
+            switch ($CloudEnvironment) {
+                "Commercial"    {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovGCC"      {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
+                "USGovDoD"      {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
+                "China"         {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsChina } catch {New-Variable -Name ConnectError -Value $true}}
             }
 
             # If no error, try test command
