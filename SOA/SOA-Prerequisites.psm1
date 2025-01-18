@@ -532,7 +532,7 @@ Function Get-ModuleStatus {
     $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
 
     if ($MaxVersion -ne "" -and $null -ne $MaxVersion) {
-        Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be Installed." -Verbose
+        Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be Installed."
 
         # Splat the arguments when using Find-Module
         $Arguments = @{
@@ -2025,7 +2025,6 @@ Function Install-SOAPrerequisites {
     } Catch {} 
 
     if ($moduleResponse.StatusCode -eq 200) {
-        Write-Verbose "Downloading File" -Verbose
         $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
     }
 
