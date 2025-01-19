@@ -443,7 +443,6 @@ Function Invoke-Consent {
         "USGovGCC"     {$AuthLocBase = "https://login.microsoftonline.com";break}
         "USGovGCCHigh" {$AuthLocBase = "https://login.microsoftonline.us";break}
         "USGovDoD"     {$AuthLocBase = "https://login.microsoftonline.us";break}
-        "Germany"      {$AuthLocBase = "https://login.microsoftonline.de";break}
         "China"        {$AuthLocBase = "https://login.partner.microsoftonline.cn"}
     }
     # Need to use the Application ID, not Object ID
@@ -1489,7 +1488,6 @@ Function Get-RequiredAppPermissions {
         "USGovGCC"     {$MDEAvailable=$true;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251";break}
         "USGovGCCHigh" {$MDEAvailable=$true;$THId="5f804853-e3b1-447b-9a8b-6d3e1257c72a";break}
         "USGovDoD"     {$MDEAvailable=$true;$THId="5f804853-e3b1-447b-9a8b-6d3e1257c72a";break}
-        "Germany"      {$MDEAvailable=$false;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251";break}
         "China"        {$MDEAvailable=$false;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251"}
     }
     if (($HasMDELicense -eq $true -and $MDEAvailable -eq $true) -or $HasATPP2License -eq $true) {
@@ -1508,7 +1506,6 @@ Function Get-RequiredAppPermissions {
         "USGovGCC"     {$MDIAvailable=$true;break}
         "USGovGCCHigh" {$MDIAvailable=$true;break}
         "USGovDoD"     {$MDIAvailable=$true;break}
-        "Germany"      {$MDIAvailable=$false;break}
         "China"        {$MDIAvailable=$false}
     }
     if ($HasMDILicense -eq $true -and $MDIAvailable -eq $true) {
@@ -1522,6 +1519,12 @@ Function Get-RequiredAppPermissions {
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="bf394140-e372-4bf9-a898-299cfc7564e5"
             Name="SecurityEvents.Read.All"
+            Type='Role'
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
+        }
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID="5f0ffea2-f474-4cf2-9834-61cda2bcea5c"
+            Name="SecurityIdentitiesSensors.Read.All"
             Type='Role'
             Resource="00000003-0000-0000-c000-000000000000" # Graph
         }
