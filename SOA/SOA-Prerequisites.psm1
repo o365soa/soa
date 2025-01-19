@@ -43,6 +43,7 @@ Function Get-IsAdministrator {
 function Exit-Script {
     Remove-Variable -Name subscribedSku -Scope Script -ErrorAction SilentlyContinue
     Remove-Variable -Name *Licensed -Scope Script -ErrorAction SilentlyContinue
+    Remove-Variable -Name ModuleVersions -Scope Script -ErrorAction SilentlyContinue
     Stop-Transcript
 }
 
@@ -531,8 +532,8 @@ Function Get-ModuleStatus {
     # Evaluate the ModuleVersion JSON file to determine if any versions should be excluded
     $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
 
-    if ($MaxVersion -ne "" -and $null -ne $MaxVersion) {
-        Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be Installed."
+    if ($MaxVersion) {
+        Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be installed."
 
         # Splat the arguments when using Find-Module
         $Arguments = @{
@@ -974,8 +975,8 @@ function Import-PSModule {
         # Evaluate the ModuleVersion JSON file to determine if any versions should be excluded
         $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
 
-        if ($MaxVersion -ne "" -and $null -ne $MaxVersion) {
-            Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be Imported."
+        if ($MaxVersion) {
+            Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be imported."
 
             $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Where-Object {$_.Version -le $MaxVersion} | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
         } else {
@@ -2007,22 +2008,19 @@ Function Install-SOAPrerequisites {
 
     #>
 
-    If($UseProxy)
-    {
+    if ($UseProxy) {
         Write-Host "The UseProxy switch was used. An attempt will be made to connect through the proxy infrastructure where possible."
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
-    } 
-    Else 
-    {
+    } else {
         Write-Host "Proxy requirement was not specified with UseProxy. Connection will be attempted directly."
         Write-Host ""
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
     }
 
     # Download module file to determine if any versions should be skipped. Used by both the Module and Connection checks
-    Try {
+    try {
         $moduleResponse = Invoke-WebRequest -Uri "https://o365soa.github.io/soa/moduleversion.json"
-    } Catch {} 
+    } catch {} 
 
     if ($moduleResponse.StatusCode -eq 200) {
         $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
