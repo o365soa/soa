@@ -43,6 +43,7 @@ Function Get-IsAdministrator {
 function Exit-Script {
     Remove-Variable -Name subscribedSku -Scope Script -ErrorAction SilentlyContinue
     Remove-Variable -Name *Licensed -Scope Script -ErrorAction SilentlyContinue
+    Remove-Variable -Name ModuleVersions -Scope Script -ErrorAction SilentlyContinue
     Stop-Transcript
 }
 
@@ -525,8 +526,23 @@ Function Get-ModuleStatus {
     # Set variables used
     $MultipleFound = $False
     $Installed = $False
+    $Arguments = @{}
 
-    $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable)
+    # Evaluate the ModuleVersion JSON file to determine if any versions should be excluded
+    $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
+
+    if ($MaxVersion) {
+        Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be installed."
+
+        # Splat the arguments when using Find-Module
+        $Arguments = @{
+            MaximumVersion = $MaxVersion
+        }
+
+        $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable | Where-Object {$_.Version -le $MaxVersion})
+    } else {
+        $InstalledModule = @(Get-Module -Name $ModuleName -ListAvailable)
+    }
 
     ForEach($M in $InstalledModule)
     {
@@ -550,7 +566,7 @@ Function Get-ModuleStatus {
         $Installed = $True
     }
 
-    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue)
+    $PSGalleryModule = @(Find-Module $ModuleName -ErrorAction:SilentlyContinue @Arguments)
 
     If($PSGalleryModule.Count -eq 1) {
         [version]$GalleryVersion = $PSGalleryModule.Version
@@ -925,12 +941,12 @@ Function Invoke-SOAModuleCheck {
     $ConflictModules = @()
 
     # Bypass checks
-    If($Bypass -notcontains "SPO") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
-    If($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
-    If (($Bypass -notcontains "EXO" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
-    If ($Bypass -notcontains "PP") {$RequiredModules += "Microsoft.PowerApps.Administration.PowerShell"}
-    If($Bypass -notcontains "Graph") {$RequiredModules += "Microsoft.Graph.Authentication"}
-    If($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
+    if ($Bypass -notcontains "SPO") { $RequiredModules += "Microsoft.Online.SharePoint.PowerShell" }
+    if ($Bypass -notcontains "Teams") {$RequiredModules += "MicrosoftTeams"}
+    if (($Bypass -notcontains "EXO" -or $Bypass -notcontains "SCC")) {$RequiredModules += "ExchangeOnlineManagement"}
+    if ($Bypass -notcontains "PP") {$RequiredModules += "Microsoft.PowerApps.Administration.PowerShell"}
+    if ($Bypass -notcontains "Graph") {$RequiredModules += "Microsoft.Graph.Authentication"}
+    if ($Bypass -notcontains "ActiveDirectory") { $RequiredModules += "ActiveDirectory" }
 
     $ModuleCheckResult = @()
 
@@ -955,7 +971,17 @@ function Import-PSModule {
         )
 
     if ($Implicit -eq $false) {
-        $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
+        # Evaluate the ModuleVersion JSON file to determine if any versions should be excluded
+        $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
+
+        if ($MaxVersion) {
+            Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be imported."
+
+            $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Where-Object {$_.Version -le $MaxVersion} | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
+        } else {
+            $highestVersion = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object -Property Version -Descending | Select-Object -First 1).Version.ToString()
+        }
+
         # Multiple loaded versions are listed in reverse order of precedence
         $loadedModule = Get-Module -Name $ModuleName | Select-Object -Last 1
         if ($loadedModule -and $loadedModule.Version.ToString() -ne $highestVersion) {
@@ -1014,7 +1040,7 @@ Function Test-Connections {
         $connectToGraph = $true
     }
     if ($connectToGraph -eq $true) {
-        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
@@ -1090,7 +1116,7 @@ Function Test-Connections {
     
     #>
     if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
-        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
     }
 
     If($Bypass -notcontains "SCC") {
@@ -1199,7 +1225,7 @@ Function Test-Connections {
     
     #>
     If($Bypass -notcontains "SPO") {
-        Import-PSModule -ModuleName Microsoft.Online.SharePoint.PowerShell -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName Microsoft.Online.SharePoint.PowerShell -Implicit:$UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1249,7 +1275,7 @@ Function Test-Connections {
             $TeamsLicensed = (Get-LicenseStatus -LicenseType Teams)
         }
         if ($TeamsLicensed -eq $true) {
-            Import-PSModule -ModuleName MicrosoftTeams -Implicit $UseImplicitLoading
+            Import-PSModule -ModuleName MicrosoftTeams -Implicit:$UseImplicitLoading
             # Reset vars
             $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1298,7 +1324,7 @@ Function Test-Connections {
     #>
     If($Bypass -notcontains 'PP') {
 
-        Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit $UseImplicitLoading
+        Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit:$UseImplicitLoading
         # Reset vars
         $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
 
@@ -1983,16 +2009,22 @@ Function Install-SOAPrerequisites {
 
     #>
 
-    If($UseProxy)
-    {
+    if ($UseProxy) {
         Write-Host "The UseProxy switch was used. An attempt will be made to connect through the proxy infrastructure where possible."
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType IEConfig
-    } 
-    Else 
-    {
+    } else {
         Write-Host "Proxy requirement was not specified with UseProxy. Connection will be attempted directly."
         Write-Host ""
         $RPSProxySetting = New-PSSessionOption -ProxyAccessType None 
+    }
+
+    # Download module file to determine if any versions should be skipped. Used by both the Module and Connection checks
+    try {
+        $moduleResponse = Invoke-WebRequest -Uri "https://o365soa.github.io/soa/moduleversion.json"
+    } catch {} 
+
+    if ($moduleResponse.StatusCode -eq 200) {
+        $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
     }
 
     <# 
