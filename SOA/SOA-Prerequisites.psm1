@@ -582,9 +582,9 @@ Function Get-ModuleStatus {
     Return New-Object -TypeName PSObject -Property @{
         Module=$ModuleName
         InstalledVersion=$InstalledModule.Version
-        GalleryVersion=$GalleryVersion
+        GalleryVersion=$(if ($MaxVersion) { "$GalleryVersion (*)" } else { $GalleryVersion })
         Installed=$Installed
-        Conflict=$(If($Installed -and $ConflictModule) { $True } Else { $False })
+        Conflict=$(if ($Installed -and $ConflictModule) { $True } else { $False })
         Multiple=$MultipleFound
         Path=$modulePaths
         NewerAvailable=$NewerAvailable
