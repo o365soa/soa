@@ -744,16 +744,29 @@ Function Install-ModuleFromGallery {
         [Switch]$Update
     )
 
+    $InstallArguments = @{}
+
     # Install the module from PSGallery specifying Force
     # AllowClobber allows Teams module to be installed when SfBO module is installed/loaded
     if (Get-IsAdministrator) {
-        $Scope = "AllUsers"
+        $InstallArguments = @{
+            Scope = "AllUsers"
+        }
     }
     else {
-        $Scope = "CurrentUser"
+        $InstallArguments = @{
+            Scope = "CurrentUser"
+        }
     }
 
-    Install-Module $Module -Force -Scope:$Scope -AllowClobber
+    $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $Module}).MaximumVersion
+    if ($MaxVersion) {
+        Write-Verbose "A MaximumVersion of $MaxVersion was specified for $Module. Only this version will be installed from the PSGallery."
+
+        $InstallArguments.Add("RequiredVersion",$MaxVersion)
+    }
+
+    Install-Module $Module -Force -AllowClobber @InstallArguments
 
     If($Update) {
         # Remove old versions of the module

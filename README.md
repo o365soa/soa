@@ -7,7 +7,7 @@ The following Microsoft security assessments have several prerequisites that nee
 - Microsoft 365 Foundations - Workload Security Assessment
 - Security Optimization Assessment for Microsoft Defender
 
-The preqrequisites installation script is included in a PowerShell module named SOA.
+The prerequisites installation script is included in a PowerShell module named SOA.
 
 ## Prerequisites Breakdown
 
@@ -46,7 +46,7 @@ In order to install the SOA module and run the prerequisites script, you must ha
      `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
       
 ### Permissions
-* Local admin (running PowerShell as an adminisrator) is not required unless the Active Directory module needs to be installed (see [below](#active-directory-module)).
+* Local admin (running PowerShell as an administrator) is not required unless the Active Directory module needs to be installed (see [below](#active-directory-module)).
 * The user installing the prerequisites needs the following roles:
    * Application Administrator (or Cloud App Administrator or Privileged Role Administrator), to create the app registration. (If this is not possible, contact the resource delivering the assessment for instructions to manually create the app registration.)
    * Billing Administrator, to get the licenses in the tenant.
