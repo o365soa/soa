@@ -2,7 +2,7 @@
     {
         "Version": "2.4.129.0",
         "SupportEndDate": "\/Date(1914476400000)\/",
-        "SecurityUpdate":  false
+        "SecurityUpdate":  true
     },
     {
         "Version": "2.4.27.0",
