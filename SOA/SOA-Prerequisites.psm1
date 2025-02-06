@@ -1759,9 +1759,25 @@ Function Test-SOAApplication
         $TokenCheck = $False
     }
 
+    # Get total user count
+    if ($TokenCheck -eq $true) {
+        $headers = @{
+            consistencyLevel = 'eventual'
+        }
+        # Returns the first page of results along with the total count that will be returned if all pages are requested
+        $countResponse = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/users?`$count=true&`$select=id" -headers $headers -OutputType PSObject
+        if ($countResponse."@odata.count" -gt 400000) {
+            $countNote = 'Recommended to run user-level collection phases separately'
+        } elseif ($countResponse."@odata.count" -gt 200000) {
+            $countNote = 'Consider running user-level collection phases separately'
+        }
+    }
+
     Return New-Object -TypeName PSObject -Property @{
         Permissions=$PermCheck
         Token=$TokenCheck
+        UserCount=$countResponse."@odata.count"
+        CountNote=$countNote
     }
                 
 }
@@ -1981,7 +1997,7 @@ Function Install-SOAPrerequisites {
     #>
     Write-Host ""
     Write-Host "This script is used to install and validate the prerequisites for running the data collection"
-    Write-Host "for one of the Microsoft security assessments offered via Microsoft Services."
+    Write-Host "for one of the Microsoft 365 security assessments offered via Microsoft Services."
     Write-Host "At the conclusion of this script running successfully, a file named SOA-PreCheck.json will be created."
     Write-Host "This file should be sent to the engineer who will be delivering the assessment."
     Write-Host ""
@@ -1990,7 +2006,7 @@ Function Install-SOAPrerequisites {
 
     if ($DoNotRemediate -eq $false -and $ConnectOnly -eq $false) {
         Write-Important
-        Write-Host "This script makes changes on this machine and in your Office 365 tenant. Per the parameters used, the following will occur:" -ForegroundColor Green
+        Write-Host "This script makes changes on this machine and in your Microsoft 365 tenant. Per the parameters used, the following will occur:" -ForegroundColor Green
         if ($ModuleCheck) {
             Write-Host "- Install the latest version of PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
         }
@@ -2004,11 +2020,13 @@ Function Install-SOAPrerequisites {
         Write-Host ""
 
         While($True) {
-            $rhInput = Read-Host "Is this script being run on the machine that will be used for the data collection, and do you agree with the changes above (y/n)"
+            if ($EntraAppOnly) {
+                $rhInput = Read-Host "Do you agree with the changes above (y/n)"
+            } else {
+                $rhInput = Read-Host "Is this script being run on the machine that will be used to pertform the data collection, and do you agree with the changes above (y/n)"
+            }
             if($rhInput -eq "n") {
                 Exit-Script
-                throw "Run Install-SOAPrerequisites on the machine that will be used to perform the data collection."
-                
             } elseif($rhInput -eq "y") {
                 Write-Host ""
                 break;
@@ -2159,6 +2177,13 @@ Function Install-SOAPrerequisites {
                 Exit-Script
                 throw "There was an error determining the cloud environment for $UPN. Use the CloudEnvironment parameter to specify a cloud."
             }
+        }
+        switch ($CloudEnvironment) {
+            "Commercial"   {$GraphHost = "https://graph.microsoft.com"}
+            "USGovGCC"     {$GraphHost = "https://graph.microsoft.com"}
+            "USGovGCCHigh" {$GraphHost = "https://graph.microsoft.us"}
+            "USGovDoD"     {$GraphHost = "https://dod-graph.microsoft.us"}
+            "China"        {$GraphHost = "https://microsoftgraph.chinacloudapi.cn"}
         }
 
         # Proceed to testing connections
@@ -2363,7 +2388,7 @@ Function Install-SOAPrerequisites {
             # Perform Graph check using credentials on the App
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             Start-Sleep 10 # Avoid a race condition
-            Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction:SilentlyContinue -ErrorVariable ConnectError | Out-Null
+            Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null
             
             If($ConnectError){
                 $CheckResults += New-Object -Type PSObject -Property @{
@@ -2472,10 +2497,12 @@ Function Install-SOAPrerequisites {
         $version = $SOAModule.Version.ToString()
     }
     
-    New-Object -TypeName PSObject -Property @{
+    [ordered]@{
         Date=(Get-Date).DateTime
         Version=$version
         Cloud=$CloudEnvironment
+        UserCount=$AppTest.UserCount
+        UserCountNote=$AppTest.CountNote
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
