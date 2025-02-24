@@ -1507,18 +1507,15 @@ Function Get-RequiredAppPermissions {
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
 
-    If ($CloudEnvironment -ne "USGovGCCHigh" -and $CloudEnvironment -ne "USGovDoD"){
-        Write-Verbose "Role for Directory Synchronization will be included in app"
-        switch ($CloudEnvironment) {
-            "China" {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe";break}
-            default {$GUID = "bb70e231-92dc-4729-aff5-697b3f04be95"}
-        }
-        $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID=$GUID
-            Name="OnPremDirectorySynchronization.Read.All"
-            Type='Role'
-            Resource="00000003-0000-0000-c000-000000000000" # Graph
-        }
+    switch ($CloudEnvironment) {
+        "China" {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe";break}
+        default {$GUID = "bb70e231-92dc-4729-aff5-697b3f04be95"}
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID=$GUID
+        Name="OnPremDirectorySynchronization.Read.All"
+        Type='Role'
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
 
     $MDEAvailable = $false
