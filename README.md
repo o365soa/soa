@@ -3,7 +3,6 @@
 ## Introduction
 
 The following Microsoft security assessments have several prerequisites that need to be installed and configured:
-- Office 365 Security Optimization Assessment
 - Microsoft 365 Foundations - Workload Security Assessment
 - Security Optimization Assessment for Microsoft Defender
 
