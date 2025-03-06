@@ -1508,7 +1508,9 @@ Function Get-RequiredAppPermissions {
     }
 
     switch ($CloudEnvironment) {
-        "China" {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe";break}
+        USGovGCCHigh {$GUID = "47c980b8-449c-4b30-99e6-aeb22a11a023"}
+        USGovDoD {$GUID = "47c980b8-449c-4b30-99e6-aeb22a11a023"}
+        China {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe"}
         default {$GUID = "bb70e231-92dc-4729-aff5-697b3f04be95"}
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
