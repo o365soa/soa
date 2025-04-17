@@ -1,17 +1,7 @@
 [
     {
-        "Version": "7.12",
-        "WarningStartDate": "\/Date(1746770400617)\/",
-        "SupportEndDate": "\/Date(1747375200571)\/"
-    },
-    {
-        "Version": "7.11",
-        "WarningStartDate": "\/Date(1744178400712)\/",
-        "SupportEndDate": "\/Date(1744783200354)\/"
-    },
-    {
-        "Version": "7.10",
-        "WarningStartDate": "\/Date(1741503600726)\/",
-        "SupportEndDate": "\/Date(1742108400968)\/"
+        "LatestVersion": "7.12",
+        "WarningStartDate": "\/Date(1746770400223)\/",
+        "SupportEndDate": "\/Date(1747375200101)\/"
     }
 ]
