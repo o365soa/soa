@@ -1,7 +1,7 @@
 [
     {
-        "LatestVersion": "7.12",
+        "CurrentVersion": "7.12",
         "WarningStartDate": "\/Date(1743836400000)\/",
-        "SupportEndDate": "\/Date(1744182000000)\/"
+        "ExecutionEndDate": "\/Date(1744182000000)\/"
     }
 ]
