@@ -483,7 +483,7 @@ Function Install-EntraApp {
     # Create the Entra application
     Write-Verbose "$(Get-Date) Install-EntraApp Installing App"
     $Params = @{
-        'displayName' = 'Microsoft Security Assessment'
+        'displayName' = 'Microsoft 365 Security Assessment'
         'SignInAudience' = 'AzureADMyOrg'
         'web' = @{
             'redirectUris' = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
@@ -499,14 +499,19 @@ Function Install-EntraApp {
     Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment
 
     # Add service principal (enterprise app) as owner of its app registration
-    $appSp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
-    $Params = @{
-        '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+    $appSp = Get-SOAAppServicePrincipal -EntraApp $EntraApp
+    if ($appSp) {
+        if (Add-SOAAppOwner -NewOwnerObjectId $appSp.Id -EntraApp $EntraApp) {
+            $script:appSelfOwner = $true
+        } else {
+            $script:appSelfOwner = $false
+        }
+    } else {
+        $script:appSelfOwner = $false
     }
-    Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
-
+    
     # Return the newly created application
-    Return (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)")
+    return (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)")
     
 }
 
@@ -1653,28 +1658,28 @@ function Get-SOAEntraApp {
     $EntraApp = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
 
     if ($EntraApp -and $RemoveExistingEntraApp -and $DoNotRemediate -eq $false) {
-        Write-Host "$(Get-Date) Removing existing Microsoft Entra application..."
+        Write-Host "$(Get-Date) Deleting existing Microsoft Entra application..."
         try {
             Invoke-MgGraphRequest -Method DELETE -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)"
             $EntraApp = $null
         }
         catch {
-            Write-Warning "$(Get-Date) Unable to remove existing Microsoft Entra application. Please remove it manually."
+            Write-Warning "$(Get-Date) Unable to delete existing Microsoft Entra app registration. Please remove it manually."
         }
     }
 
     if (!$EntraApp) {
         if ($DoNotRemediate -eq $false) {
-            Write-Host "$(Get-Date) Creating Microsoft Entra enterprise application..."
+            Write-Host "$(Get-Date) Creating Microsoft Entra app registration..."
             $EntraApp = Install-EntraApp -CloudEnvironment $CloudEnvironment
             Write-Verbose "$(Get-Date) Get-SOAEntraApp App $($EntraApp.Id)"
         }
     }
     else {
         # Check whether the application name should be updated
-        if ($EntraApp.displayName -eq 'Office 365 Security Optimization Assessment') {
+        if ($EntraApp.displayName -ne 'Microsoft 365 Security Assessment') {
             Write-Verbose "$(Get-Date) Renaming the display name of the Microsoft Entra application..."
-            $Body = @{'displayName' = 'Microsoft Security Assessment'}
+            $Body = @{'displayName' = 'Microsoft 365 Security Assessment'}
             Invoke-MgGraphRequest -Method PATCH -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)" -Body $Body
         }
 
@@ -1712,20 +1717,58 @@ function Get-SOAEntraApp {
         }
         # Check if service principal (enterprise app) is owner of its app registration
         $appOwners = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications/$($EntraApp.Id)/owners" -OutputType PSObject).Value
-        $appSp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
-        if ($appOwners.Id -notcontains $appSp.Id) {
-            if ($DoNotRemediate -eq $false) {
-                Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
-                $Params = @{
-                    '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$($appSp.Id)"
+        $appSp = Get-SOAAppServicePrincipal -EntraApp $EntraApp
+        if ($appSp) {
+            if ($appOwners.Id -notcontains $appSp.Id) {
+                if ($DoNotRemediate -eq $false) {
+                    if (Add-SOAAppOwner -NewOwnerObjectId $appSp.Id -EntraApp $EntraApp) {
+                        $script:appSelfOwner = $true
+                    } else {
+                        $script:appSelfOwner = $false
+                    }
                 }
-                Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -body $Params
+            } else {
+                $script:appSelfOwner = $true
             }
-        }  
+        } else {
+            $script:appSelfOwner = $false
+        }
     }
 
     Return $EntraApp
 
+}
+
+function Get-SOAAppServicePrincipal {
+    param (
+        $EntraApp
+    )
+    $connCount = 0
+    $connLimit = 5
+    do {
+        try {
+            $connCount++
+            Write-Verbose "$(Get-Date) Get-SOAAppServicePrincipal: Getting app service principal attempt #$connCount"
+            $sp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -OutputType PSObject
+            return $sp
+        } catch {
+            Write-Verbose $_.Exception.Message
+            Start-Sleep -Seconds 2
+        }
+    } until ($connCount -eq $connLimit)
+}
+
+function Add-SOAAppOwner {
+    param (
+        $NewOwnerObjectId,
+        $EntraApp
+    )
+    $params = @{
+        '@odata.id' = "https://graph.microsoft.com/v1.0/directoryObjects/$NewOwnerObjectId"
+    }
+    Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
+    Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -Body $params
+    if ($?) {return $true} else {return $false}
 }
 
 Function Test-SOAApplication
@@ -2299,6 +2342,10 @@ Function Install-SOAPrerequisites {
                     Check="Entra Application"
                     Pass=$true
                 }
+            }
+            $CheckResults += New-Object -Type PSObject -Property @{
+                Check="Entra Application Owner"
+                Pass=$script:appSelfOwner
             }
 
             if ($PromptForApplicationSecret -eq $True) {
