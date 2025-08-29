@@ -1525,6 +1525,33 @@ Function Get-RequiredAppPermissions {
         Resource="00000003-0000-0000-c000-000000000000" # Graph
     }
 
+    switch ($CloudEnvironment) {
+        "China"        {$IncidentsAvailable=$false}
+        default        {$IncidentsAvailable=$true}
+    }
+    if ($IncidentsAvailable -eq $true) {
+        Write-Verbose "Roles for Incidents and Alerts will be included in app"
+        switch ($CloudEnvironment) {
+            default {$GUID = "45cc0394-e837-488b-a098-1918f48d186c"}
+        }
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID=$GUID
+            Name="SecurityIncident.Read.All"
+            Type='Role'
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
+        }
+
+        switch ($CloudEnvironment) {
+            default {$GUID = "472e4a4d-bb4a-4026-98d1-0b0d74cb74a5"}
+        }
+        $AppRoles += New-Object -TypeName PSObject -Property @{
+            ID=$GUID
+            Name="SecurityAlert.Read.All"
+            Type='Role'
+            Resource="00000003-0000-0000-c000-000000000000" # Graph
+        }
+    }
+
     $MDEAvailable = $false
     switch ($CloudEnvironment) {
         "Commercial"   {$MDEAvailable=$true;$THId="dd98c7f5-2d42-42d3-a0e4-633161547251";break}
