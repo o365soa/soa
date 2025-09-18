@@ -108,7 +108,6 @@ The permission scopes added to the app registration:
 Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
 |Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.
 |Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
-|Graph|SecurityIncident.Read.All|Application|Get active Defender Incidents (and related Alerts) in tenant, for scenarios where data is not available through Advanced Hunting.|
 |Graph|SecurityAlert.Read.All|Application|Get active Defender Incidents (and related Alerts) in tenant, for scenarios where data is not available through Advanced Hunting.|
 |Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
 |Graph|SecurityEvents.Read.All|Application|For organisations with Microsoft Defender for Identity, get configuration details from Secure Score that do not have an API available yet.|
