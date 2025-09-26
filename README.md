@@ -106,11 +106,11 @@ The permission scopes added to the app registration:
 |Graph|IdentityRiskEvent.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection.|
 |Graph|OnPremDirectorySynchronization.Read.All|Application|Get Microsoft Entra directory synchronization settings.|
 Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
-|Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups, if applicable.
-|Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users, if applicable.|
-|Graph|SecurityAlert.Read.All|Application|Get active Defender Incidents (and related Alerts) in tenant, for scenarios where data is not available through Advanced Hunting.|
+|Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups.
+|Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users.|
+|Graph|SecurityAlert.Read.All|Application|For organisations with Microsoft Defender for Office 365 (Plan 2) or Microsoft Defender for Endpoint, get Defender alerts.|
 |Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
-|Graph|SecurityEvents.Read.All|Application|For organisations with Microsoft Defender for Identity, get configuration details from Secure Score that do not have an API available yet.|
+|Graph|SecurityEvents.Read.All|Application|For organisations with Microsoft Defender for Identity, get configuration details from Secure Score that do not have an API available.|
 |Graph|SecurityIdentitiesSensors.Read.All|Application|For organisations with Microsoft Defender for Identity, get sensor details.|
 |Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2, get active automated investigations. For organisations with Microsoft Defender for Endpoint, get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
