@@ -1540,16 +1540,6 @@ Function Get-RequiredAppPermissions {
             Type='Role'
             Resource="00000003-0000-0000-c000-000000000000" # Graph
         }
-
-        switch ($CloudEnvironment) {
-            default {$GUID = "45cc0394-e837-488b-a098-1918f48d186c"}
-        }
-        $AppRoles += New-Object -TypeName PSObject -Property @{
-            ID=$GUID
-            Name="SecurityIncident.Read.All"
-            Type='Role'
-            Resource="00000003-0000-0000-c000-000000000000" # Graph
-        }
     }
 
     $MDEAvailable = $false
