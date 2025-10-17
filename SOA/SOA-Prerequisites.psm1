@@ -209,7 +209,7 @@ function Remove-SOAAppSecret {
     param ()
 
     # Get application again from Entra to be sure it includes any added secrets
-    $App = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject).Value
+    $App = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject -ErrorAction SilentlyContinue).Value
 
     $secrets = $App.passwordCredentials
     foreach ($secret in $secrets) {
@@ -2254,6 +2254,11 @@ Function Install-SOAPrerequisites {
     }
 
     If($EntraAppCheck -eq $True) {
+        # Check if the InitialDomain was not provided, which is required when skipping delegated connection entirely
+        if (($null -ne $GraphClientId -and $PromptForApplicationSecret -eq $true) -and $null -eq $InitialDomain) {
+            Exit-Script
+            throw "The GraphClientId and PromptForApplicationSecret parameters were used, but InitialDomain was not specified. Re-run the script with the InitialDomain parameter"
+        }
         
         # Get the cloud environment if not provided
         if (-not $CloudEnvironment) {
@@ -2288,7 +2293,8 @@ Function Install-SOAPrerequisites {
         }
 
         $mgContext =  (Get-MgContext).Scopes
-        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -or ($PromptForApplicationSecret)) {
+        # Skip delegated connection if providing GraphClientId and the App Secret manually, otherwise evaluate whether the correct scope was requested
+        if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -and ($null -eq $GraphClientId -or $PromptForApplicationSecret -ne $true)) {
             Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
             if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
             $connCount = 0
@@ -2327,9 +2333,6 @@ Function Install-SOAPrerequisites {
         if (Get-MgContext) {
             Write-Host "$(Get-Date) Checking Microsoft Entra enterprise application..."
 
-            # Get the tenant domain
-            $tenantdomain = Get-InitialDomain
-
             $script:MDELicensed = Get-LicenseStatus -LicenseType MDE
             #Write-Verbose "$(Get-Date) Get-LicenseStatus MDE License found: $($script:MDELicensed)"
 
@@ -2339,12 +2342,61 @@ Function Install-SOAPrerequisites {
             $script:ATPP2Licensed = Get-LicenseStatus -LicenseType ATPP2
             #Write-Verbose "$(Get-Date) Get-LicenseStatus ATPP2 License found: $($script:ATPP2Licensed)"
 
-            # Determine if Microsoft Entra application exists (and has public client redirect URI set), create if doesn't
+            # Determine if Microsoft Entra application exists (and has public client redirect URI set) and create (or recreate) if it doesn't.
             $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
         }
 
-        If($EntraApp) {
-            # Check if redirect URIs not set for existing app because DoNotRemediate is True
+        # EntraApp will have a value if connecting using Delegated. If skipping Delegated entirely, then the initial domain still needs to be queried
+        If($EntraApp -or ($GraphClientId -and $PromptForApplicationSecret)) {
+            # Get the tenant domain
+            $tenantdomain = Get-InitialDomain
+
+            if ($PromptForApplicationSecret -eq $True) {
+                # Prompt for the client secret needed to connect to the application
+                $SSCred = $null
+
+                Write-Host "$(Get-Date) At the prompt, provide a valid client secret for the assessment's app registration."
+                Start-Sleep -Seconds 1
+                while ($null -eq $SSCred -or $SSCred.Length -eq 0) {
+                    # UserName is a required parameter for Get-Credential but it's value is not used elsewhere in the script
+                    $SSCred = (Get-Credential -Message "Enter the app registration's client secret into the password field." -UserName "Microsoft Security Assessment").Password
+                    Start-Sleep 1 # Add a delay to allow to aborting to console
+                }
+            } else {
+                # Reset secret
+                $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
+                $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
+                Write-Host "$(Get-Date) Sleeping to allow for replication of the app registration's new client secret..."
+                Start-Sleep 10
+            }
+
+            # Reconnect with Application permissions
+            Try {Disconnect-MgGraph -ErrorAction Stop | Out-Null} Catch {}
+            if ($GraphClientId) {
+                $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $GraphClientId, $SSCred
+            } else {
+                $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($EntraApp.AppId), $SSCred
+            }
+            
+            $ConnCount = 0
+            Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
+            Do {
+                Try {
+                    $ConnCount++
+                    if ($ConnCount -gt 5) {$ConnectionVerbose = @{Verbose = $true}} # Suppress Verbose output for the first 5 attempts, but display when connection is taking longer
+                    Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount" @ConnectionVerbose
+                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop | Out-Null
+                } Catch {
+                    Start-Sleep 5
+                }
+            } Until ($null -ne (Get-MgContext))
+
+            # If the Delegated permissions were skipped, then the EntraApp has not yet been collected. Specifying the App ID allows the Application.ReadWrite.OwnedBy permission to be sufficient.
+            if ($GraphClientId -and $PromptForApplicationSecret) {
+                $EntraApp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications(appId=`'$GraphClientId`')"
+            }
+
+            # Check if redirect URIs not set for existing app because DoNotRemediate is True. Needs to be evaulated after switching to Application permissions for scenarios where Delegated is not used.
             $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
             if (($EntraApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
                 # Fail the Entra app check
@@ -2364,39 +2416,6 @@ Function Install-SOAPrerequisites {
                 Check="Entra Application Owner"
                 Pass=$script:appSelfOwner
             }
-
-            if ($PromptForApplicationSecret -eq $True) {
-                # Prompt for the client secret needed to connect to the application
-                $SSCred = $null
-
-                Write-Host "$(Get-Date) At the prompt, provide a valid client secret for the assessment's app registration."
-                Start-Sleep -Seconds 1
-                while ($null -eq $SSCred -or $SSCred.Length -eq 0) {
-                    # UserName is a required parameter for Get-Credential but it's value is not used elsewhere in the script
-                    $SSCred = (Get-Credential -Message "Enter the app registration's client secret into the password field." -UserName "Microsoft Security Assessment").Password
-                }
-            } else {
-                # Reset secret
-                $clientsecret = Reset-SOAAppSecret -App $EntraApp -Task "Prereq"
-                $SSCred = $clientsecret | ConvertTo-SecureString -AsPlainText -Force
-                Write-Host "$(Get-Date) Sleeping to allow for replication of the app registration's new client secret..."
-                Start-Sleep 10
-            }
-
-            # Reconnect with Application permissions
-            Disconnect-MgGraph | Out-Null
-            $GraphCred = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList ($EntraApp.AppId), $SSCred
-            $ConnCount = 0
-            Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
-            Do {
-                Try {
-                    $ConnCount++
-                    Write-Verbose "$(Get-Date) Graph connection attempt #$ConnCount"
-                    Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ContextScope "Process" -ErrorAction Stop | Out-Null
-                } Catch {
-                    Start-Sleep 5
-                }
-            } Until ($null -ne (Get-MgContext))
 
             $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                 
@@ -2454,9 +2473,20 @@ Function Install-SOAPrerequisites {
             Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null
             
             If($ConnectError){
-                $CheckResults += New-Object -Type PSObject -Property @{
-                    Check="Graph SDK Connection"
-                    Pass=$False
+                # Try again to confirm it wasn't a transient issue
+                Write-Verbose "$(Get-Date) Error when connecting using Graph SDK. Retrying in 15 seconds"
+                Start-Sleep 15
+                Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction SilentlyContinue -ErrorVariable ConnectError2 | Out-Null
+                if ($ConnectError2) {
+                    $CheckResults += New-Object -Type PSObject -Property @{
+                        Check="Graph SDK Connection"
+                        Pass=$False
+                    }
+                } else {
+                    $CheckResults += New-Object -Type PSObject -Property @{
+                        Check="Graph SDK Connection"
+                        Pass=$True
+                    }
                 }
             }
             else {
@@ -2466,6 +2496,7 @@ Function Install-SOAPrerequisites {
                 }
 
                 if ($PromptForApplicationSecret -eq $false) {
+                    Start-Sleep 10 # Avoid a race condition
                     # Remove client secret
                     Remove-SOAAppSecret
                 }
