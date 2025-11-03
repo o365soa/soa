@@ -1513,10 +1513,10 @@ Function Get-RequiredAppPermissions {
     }
 
     switch ($CloudEnvironment) {
-        USGovGCCHigh {$GUID = "47c980b8-449c-4b30-99e6-aeb22a11a023"}
-        USGovDoD {$GUID = "47c980b8-449c-4b30-99e6-aeb22a11a023"}
-        China {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe"}
-        default {$GUID = "bb70e231-92dc-4729-aff5-697b3f04be95"}
+        "USGovGCCHigh" {$GUID = "47c980b8-449c-4b30-99e6-aeb22a11a023"}
+        "USGovDoD"     {$GUID = "47c980b8-449c-4b30-99e6-aeb22a11a023"}
+        "China"        {$GUID = "4cd4e808-f9db-48e3-9455-51ed99ea5ebe"}
+        default        {$GUID = "bb70e231-92dc-4729-aff5-697b3f04be95"}
     }
     $AppRoles += New-Object -TypeName PSObject -Property @{
         ID=$GUID
@@ -1532,7 +1532,9 @@ Function Get-RequiredAppPermissions {
     if ($AlertsAvailable -eq $true) {
         Write-Verbose "Role for Alerts will be included in app"
         switch ($CloudEnvironment) {
-            default {$GUID = "472e4a4d-bb4a-4026-98d1-0b0d74cb74a5"}
+            "USGovGCCHigh" {$GUID = "64c33fcb-e6aa-490d-bed5-6016a9ef8f6d"}
+            "USGovDoD"     {$GUID = "64c33fcb-e6aa-490d-bed5-6016a9ef8f6d"}
+            default        {$GUID = "472e4a4d-bb4a-4026-98d1-0b0d74cb74a5"}
         }
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID=$GUID
