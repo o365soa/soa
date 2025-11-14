@@ -105,14 +105,14 @@ The permission scopes added to the app registration:
 |Graph|Directory.Read.All|Application|Get subscriptions in the tenant and sign-in activity for user and guest accounts. (Both this scope and AuditLog.Read.All are required in order to get sign-in activity.)|
 |Graph|IdentityRiskEvent.Read.All|Application|Get identity risk events raised by Microsoft Entra ID Protection.|
 |Graph|OnPremDirectorySynchronization.Read.All|Application|Get Microsoft Entra directory synchronization settings.|
-Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorisation, cross-tenant access, and conditional access.|
+Graph|Policy.Read.All|Application|Get various Microsoft Entra policies, such as authorization, cross-tenant access, and conditional access.|
 |Graph|PrivilegedAccess.Read.AzureADGroup|Application|Get Privileged Identity Management roles assigned to groups.
 |Graph|RoleManagement.Read.All|Application|Get Privileged Identity Management roles assigned to users.|
-|Graph|SecurityAlert.Read.All|Application|For organisations with Microsoft Defender for Office 365 (Plan 2) or Microsoft Defender for Endpoint, get Defender alerts.|
-|Graph|SecurityIdentitiesHealth.Read.All|Application|For organisations with Microsoft Defender for Identity, get health alerts.|
-|Graph|SecurityEvents.Read.All|Application|For organisations with Microsoft Defender for Identity, get configuration details from Secure Score that do not have an API available.|
-|Graph|SecurityIdentitiesSensors.Read.All|Application|For organisations with Microsoft Defender for Identity, get sensor details.|
-|Graph|ThreatHunting.Read.All|Application|For organisations with Microsoft Defender for Office 365 P2, get active automated investigations. For organisations with Microsoft Defender for Endpoint, get health alerts.|
+|Graph|SecurityAlert.Read.All|Application|For organizations with Microsoft Defender for Office 365 (Plan 2) or Microsoft Defender for Endpoint, get Defender alerts.|
+|Graph|SecurityIdentitiesHealth.Read.All|Application|For organizations with Microsoft Defender for Identity, get health alerts.|
+|Graph|SecurityEvents.Read.All|Application|For organizations with Microsoft Defender for Identity, get configuration details from Secure Score that do not have an API available.|
+|Graph|SecurityIdentitiesSensors.Read.All|Application|For organizations with Microsoft Defender for Identity, get sensor details.|
+|Graph|ThreatHunting.Read.All|Application|For organizations with Microsoft Defender for Office 365 P2, get active automated investigations. For organizations with Microsoft Defender for Endpoint, get health alerts.|
 |Dynamics CRM|user_impersonation|Delegated|Get Dataverse settings.|
 
 ### App registration security
