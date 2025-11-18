@@ -144,7 +144,7 @@ function Get-InitialDomain {
         Used during connection tests for Graph SDK and SPO
     #>
     
-    # Get the default onmicrosoft domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
+    # Get the default OnMicrosoft domain. Because the SDK connection is still using a delegated call at this point, the application-based Graph function cannot be used
     if ($InitialDomain) {
         return $InitialDomain
     } else {
@@ -689,7 +689,7 @@ function Get-LicenseStatus {
         $script:subscribedSku = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/subscribedSkus" -OutputType PSObject
     }
     if ($LicenseType -eq "Teams") {
-        # Teams licence check is handled differently because it needs to be an exact match
+        # Teams license check is handled differently because it needs to be an exact match
         if ($HasTeamsLicense) {
             Write-Verbose "$(Get-Date) Get-LicenseStatus HasTeamsLicense switch used, skipping license check and returning True"
             Write-Verbose "$(Get-Date) Get-LicenseStatus $LicenseType`: True "
@@ -1017,7 +1017,7 @@ function Import-PSModule {
             Write-Error -Message "Error loading module $ModuleName."
         }
 
-        # Check that Graph modules have dependant module (Authentication) loaded with the same version and throw an error if they are not the same version. Only check for non-Auth modules since they will have a RequiredModules statement in the manifest to load the Auth module
+        # Check that Graph modules have dependent module (Authentication) loaded with the same version and throw an error if they are not the same version. Only check for non-Auth modules since they will have a RequiredModules statement in the manifest to load the Auth module
         if ($ModuleName -like 'Microsoft.Graph.*' -and $ModuleName -ne 'Microsoft.Graph.Authentication'){            
             $GraphModule = Get-Module -Name $ModuleName | Sort-Object Version -Descending
             $AuthModule = Get-Module -Name 'Microsoft.Graph.Authentication' | Sort-Object Version -Descending
@@ -2398,7 +2398,7 @@ Function Install-SOAPrerequisites {
                 $EntraApp = Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications(appId=`'$GraphClientId`')"
             }
 
-            # Check if redirect URIs not set for existing app because DoNotRemediate is True. Needs to be evaulated after switching to Application permissions for scenarios where Delegated is not used.
+            # Check if redirect URIs not set for existing app because DoNotRemediate is True. Needs to be evaluated after switching to Application permissions for scenarios where Delegated is not used.
             $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
             if (($EntraApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
                 # Fail the Entra app check
@@ -2458,7 +2458,7 @@ Function Install-SOAPrerequisites {
                 }
             }
 
-            # Add final result to checkresults object
+            # Add final result to CheckResults object
             $CheckResults += New-Object -Type PSObject -Property @{
                 Check="Entra App Permissions"
                 Pass=$AppTest.Permissions
