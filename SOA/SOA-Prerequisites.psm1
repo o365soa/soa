@@ -2112,7 +2112,7 @@ Function Install-SOAPrerequisites {
 
     # Download module file to determine if any versions should be skipped. Used by both the Module and Connection checks
     try {
-        $moduleResponse = Invoke-WebRequest -Uri "https://o365soa.github.io/soa/moduleversion.json"
+        $moduleResponse = Invoke-WebRequest -Uri "https://o365soa.github.io/soa/moduleversion.json" -UseBasicParsing
     } catch {} 
 
     if ($moduleResponse.StatusCode -eq 200) {
