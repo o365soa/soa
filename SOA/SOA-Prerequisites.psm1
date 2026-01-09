@@ -1037,47 +1037,50 @@ function Connect-ToSCC {
 
     # Multiple loaded versions are listed in reverse order of precedence
     $exoModuleVersion = (Get-Module -Name ExchangeOnlineManagement | Select-Object -Last 1).Version
-    # DisableWAM parameter not available prior to version 3.7.2
     # Commented Jan 3, 2025 because don't know that the connection removal is necessary anymore
     # Removing existing connections in case any use a prefix
     # Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
-    if ($exoModuleVersion -lt [version]"3.7.2") {
-        if ($NoAdminUPN) {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-IPPSSession -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-            }
-        } else {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-IPPSSession -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
+
+    # Build a hashtable of options and then splat them when connecting
+    $IPPSArguments = @{}
+
+    # Regional connection parameters
+    switch ($CloudEnvironment) {
+        "USGovGCCHigh" {
+            $IPPSArguments = @{
+                ConnectionUri = "https://ps.compliance.protection.office365.us/PowerShell-LiveID"
+                AzureADAuthorizationEndPointUri = "https://login.microsoftonline.us/common"
             }
         }
-    } else {
-        if ($NoAdminUPN) {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-IPPSSession -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
+        "USGovDoD" {
+            $IPPSArguments = @{
+                ConnectionUri = "https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID"
+                AzureADAuthorizationEndPointUri = "https://login.microsoftonline.us/common"
             }
-        } else {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-IPPSSession -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
-                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False -DisableWAM:$NoWAM | Out-Null}
+        }
+        "China" {
+            $IPPSArguments = @{
+                ConnectionUri = "https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID"
+                AzureADAuthorizationEndPointUri = "https://login.partner.microsoftonline.cn/common"
             }
         }
     }
+
+    if (!$NoAdminUPN) {
+        $IPPSArguments.Add("UserPrincipalName", $AdminUPN)
+    }
+
+    # DisableWAM parameter not available prior to version 3.7.2
+    if ($NoWAM -and !($exoModuleVersion -lt [version]"3.7.2")) {
+        $IPPSArguments.Add("DisableWAM", $NoWAM)
+    }
+
+    $IPPSArguments.GetEnumerator() | ForEach-Object {
+        Write-Verbose "$($_.Key) : $($_.Value)"
+    }
+
+    Connect-IPPSSession -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False @IPPSArguments | Out-Null
+
     return $ConnectError
 }
 
@@ -1087,46 +1090,41 @@ function Connect-ToExchange {
     )
     # Multiple loaded versions are listed in reverse order of precedence
     $exoModuleVersion = (Get-Module -Name ExchangeOnlineManagement | Select-Object -Last 1).Version
-    # DisableWAM parameter not available prior to version 3.7.2
-    if ($exoModuleVersion -lt [version]"3.7.2") {
-        if ($NoAdminUPN) {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+
+    $EXOArguments = @{}
+
+    switch ($CloudEnvironment) {
+        "USGovGCCHigh" {
+            $EXOArguments = @{
+                ExchangeEnvironmentName = "O365USGovGCCHigh"
             }
         }
-        else {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+        "USGovDoD" {
+            $EXOArguments = @{
+                ExchangeEnvironmentName = "O365USGovDoD"
             }
         }
-    } else {
-        if ($NoAdminUPN) {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-            }
-        }
-        else {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
-                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $RPSProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -DisableWAM:$NoWAM | Out-Null}
+        "China" {
+            $EXOArguments = @{
+                ExchangeEnvironmentName = "O365China"
             }
         }
     }
+
+    if (!$NoAdminUPN) {
+        $EXOArguments.Add("UserPrincipalName", $AdminUPN)
+    }
+
+    # DisableWAM parameter not available prior to version 3.7.2
+    if ($NoWAM -and !($exoModuleVersion -lt [version]"3.7.2")) {
+        $EXOArguments.Add("DisableWAM", $NoWAM)
+    }
+
+    $EXOArguments.GetEnumerator() | ForEach-Object {
+        Write-Verbose "$($_.Key) : $($_.Value)"
+    }
+
+    Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError @EXOArguments | Out-Null
 
     return $ConnectError
     
