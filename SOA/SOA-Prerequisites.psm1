@@ -1029,6 +1029,107 @@ function Import-PSModule {
         }
     }
 }
+
+function Connect-ToSCC {
+    param (
+        [switch]$NoWAM
+    )
+
+    # Multiple loaded versions are listed in reverse order of precedence
+    $exoModuleVersion = (Get-Module -Name ExchangeOnlineManagement | Select-Object -Last 1).Version
+    # Commented Jan 3, 2025 because don't know that the connection removal is necessary anymore
+    # Removing existing connections in case any use a prefix
+    # Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
+
+    # Build a hashtable of options and then splat them when connecting
+    $IPPSArguments = @{}
+
+    # Regional connection parameters
+    switch ($CloudEnvironment) {
+        "USGovGCCHigh" {
+            $IPPSArguments = @{
+                ConnectionUri = "https://ps.compliance.protection.office365.us/PowerShell-LiveID"
+                AzureADAuthorizationEndPointUri = "https://login.microsoftonline.us/common"
+            }
+        }
+        "USGovDoD" {
+            $IPPSArguments = @{
+                ConnectionUri = "https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID"
+                AzureADAuthorizationEndPointUri = "https://login.microsoftonline.us/common"
+            }
+        }
+        "China" {
+            $IPPSArguments = @{
+                ConnectionUri = "https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID"
+                AzureADAuthorizationEndPointUri = "https://login.partner.microsoftonline.cn/common"
+            }
+        }
+    }
+
+    if (!$NoAdminUPN) {
+        $IPPSArguments.Add("UserPrincipalName", $AdminUPN)
+    }
+
+    # DisableWAM parameter not available prior to version 3.7.2
+    if ($NoWAM -and !($exoModuleVersion -lt [version]"3.7.2")) {
+        $IPPSArguments.Add("DisableWAM", $NoWAM)
+    }
+
+    $IPPSArguments.GetEnumerator() | ForEach-Object {
+        Write-Verbose "$($_.Key) : $($_.Value)"
+    }
+
+    Connect-IPPSSession -PSSessionOption $RPSProxySetting -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False @IPPSArguments | Out-Null
+
+    return $ConnectError
+}
+
+function Connect-ToExchange {
+    param (
+        [switch]$NoWAM
+    )
+    # Multiple loaded versions are listed in reverse order of precedence
+    $exoModuleVersion = (Get-Module -Name ExchangeOnlineManagement | Select-Object -Last 1).Version
+
+    $EXOArguments = @{}
+
+    switch ($CloudEnvironment) {
+        "USGovGCCHigh" {
+            $EXOArguments = @{
+                ExchangeEnvironmentName = "O365USGovGCCHigh"
+            }
+        }
+        "USGovDoD" {
+            $EXOArguments = @{
+                ExchangeEnvironmentName = "O365USGovDoD"
+            }
+        }
+        "China" {
+            $EXOArguments = @{
+                ExchangeEnvironmentName = "O365China"
+            }
+        }
+    }
+
+    if (!$NoAdminUPN) {
+        $EXOArguments.Add("UserPrincipalName", $AdminUPN)
+    }
+
+    # DisableWAM parameter not available prior to version 3.7.2
+    if ($NoWAM -and !($exoModuleVersion -lt [version]"3.7.2")) {
+        $EXOArguments.Add("DisableWAM", $NoWAM)
+    }
+
+    $EXOArguments.GetEnumerator() | ForEach-Object {
+        Write-Verbose "$($_.Key) : $($_.Value)"
+    }
+
+    Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError @EXOArguments | Out-Null
+
+    return $ConnectError
+    
+}
+
 Function Test-Connections {
     Param(
         $RPSProxySetting,
@@ -1121,9 +1222,9 @@ Function Test-Connections {
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="GraphSDK"
             Connected=$Connect
-            ConnectErrors=$ConnectError
+            ConnectErrors=$ConnectError.Exception.Message
             TestCommand=$Command
-            TestCommandErrors=$CommandError
+            TestCommandErrors=$CommandError.Exception.Message
         }
     }
 
@@ -1139,48 +1240,40 @@ Function Test-Connections {
 
     If($Bypass -notcontains "SCC") {
         # Reset vars
-        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+        $connectResponse = $null; $Connect = $null; $ConnectError = $null; $Command = $null; $CommandError = $null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        # Commented Jan 3, 2025 because don't know that the connection removal is necessary anymore
-        # Removing existing connections in case any use a prefix
-        # Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"} | ForEach-Object {Disconnect-ExchangeOnline -ConnectionId $_.ConnectionId -Confirm:$false}
-        if ($NoAdminUPN) {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-IPPSSession -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $ProxySetting -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-            }
-        } else {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-IPPSSession -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ShowBanner:$False | Out-Null}
-                "USGovGCC"     {Connect-IPPSSession -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ShowBanner:$False | Out-Null}
-                "USGovGCCHigh" {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "USGovDoD"     {Connect-IPPSSession -ConnectionUri https://l5.ps.compliance.protection.office365.us/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.microsoftonline.us/common -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-                "China"        {Connect-IPPSSession -ConnectionUri https://ps.compliance.protection.partner.outlook.cn/PowerShell-LiveID -AzureADAuthorizationEndPointUri https://login.partner.microsoftonline.cn/common -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -WarningAction SilentlyContinue -ErrorVariable ConnectError -ShowBanner:$False | Out-Null}
-            }
+        $connectResponse = Connect-ToSCC -NoWAM:$false
+        # Check for WAM error if not connected
+        if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") -and $connectResponse.Exception.Message -like "*Unknown Status: Unexpected*") {
+            Write-Warning -Message "$(Get-Date) Possible Web Authentication Manager (WAM) error occurred. Trying again without WAM."
+            $sccWamDisabled = $true
+            $connectResponse = Connect-ToSCC -NoWAM:$true
         }
 
-        If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") { $Connect = $True } Else { $Connect = $False }
+        if ((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") {
+            $Connect = $True
+        } else {
+            $Connect = $False
+            $connectionError = ($connectResponse | Select-Object -Last 1).Exception | Select-Object -ExpandProperty Message
+        }
 
         # Has test command been imported. Not actually running it
         # Cmdlet available to any user
-        if (Get-Command Get-Recipient) {
-        # Cmdlet available to admins
-        #If(Get-Command "Get-ProtectionAlert") {
-            $Command = $True
-        } Else {
-            $Command = $False
+        if ($Connect -eq $true) {
+            if (Get-Command -Name Get-Recipient -ErrorAction SilentlyContinue -ErrorVariable CommandError) {
+                $Command = $True
+            } else {
+                $Command = $False
+            }
         }
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="SCC"
             Connected=$Connect
-            ConnectErrors=$ConnectError
+            ConnectErrors=$connectionError
             TestCommand=$Command
-            TestCommandErrors=$CommandError
+            TestCommandErrors=$CommandError.Exception.Message
         }
     }
 
@@ -1191,50 +1284,43 @@ Function Test-Connections {
     #>
     If($Bypass -notcontains "EXO") {
         # Reset vars
-        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+        $connectResponse = $null; $Connect = $null; $ConnectError = $null; $Command = $null; $CommandError = $null
 
         Write-Host "$(Get-Date) Connecting to Exchange..."
-        if ($NoAdminUPN) {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $ProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
+        if ($sccWamDisabled) { # WAM may have been disabled for SCC connection, so skip trying with WAM for EXO
+            $connectResponse = Connect-ToExchange -NoWAM:$true
+        } else {
+            $connectResponse = Connect-ToExchange -NoWAM:$false
+            # Check for WAM error if not connected
+            if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") -and $connectResponse.Exception.Message -like "*Unknown Status: Unexpected*") {
+                Write-Warning -Message "$(Get-Date) Possible Web Authentication Manager (WAM) error occurred. Trying again without WAM."
+                $connectResponse = Connect-ToExchange -NoWAM:$true
             }
         }
-        else {
-            switch ($CloudEnvironment) {
-                "Commercial"   {Connect-ExchangeOnline -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCC"     {Connect-ExchangeOnline -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovGCCHigh" {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovGCCHigh -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "USGovDoD"     {Connect-ExchangeOnline -ExchangeEnvironmentName O365USGovDoD -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-                "China"        {Connect-ExchangeOnline -ExchangeEnvironmentName O365China -PSSessionOption $ProxySetting -UserPrincipalName $AdminUPN -ShowBanner:$false -WarningAction SilentlyContinue -ErrorVariable ConnectError | Out-Null}
-            }
+        
+        if ((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") {
+            $Connect = $True
+        } else {
+            $Connect = $False
+            $ConnectError = ($connectResponse | Select-Object -Last 1).Exception | Select-Object -ExpandProperty Message
         }
-       
-        If((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") { $Connect = $True } Else { $Connect = $False }
 
         # Has test command been imported. Not actually running it
         # Cmdlet available to any user
-        if (Get-Command Get-Mailbox) {
-        # Cmdlet available to admin
-        #If(Get-Command "Get-OrganizationConfig") {
-            If((Get-OrganizationConfig).Name) {
+        if ($Connect -eq $true) {
+            if (Get-Command -Name Get-Mailbox -ErrorAction SilentlyContinue -ErrorVariable CommandError) {
                 $Command = $True
-            } Else {
+            } else {
                 $Command = $False
             }
-        } Else {
-            $Command = $False
         }
-
+    
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="Exchange"
             Connected=$Connect
             ConnectErrors=$ConnectError
             TestCommand=$Command
-            TestCommandErrors=$CommandError
+            TestCommandErrors=$CommandError.Exception.Message
         }
     }
 
@@ -1273,9 +1359,9 @@ Function Test-Connections {
             $Connections += New-Object -TypeName PSObject -Property @{
                 Name="SPO"
                 Connected=$Connect
-                ConnectErrors=$ConnectError
+                ConnectErrors=$ConnectError.Exception.Message
                 TestCommand=$Command
-                TestCommandErrors=$CommandError
+                TestCommandErrors=$CommandError.Exception.Message
             }
         
         }
@@ -1328,9 +1414,9 @@ Function Test-Connections {
             $Connections += New-Object -TypeName PSObject -Property @{
                 Name="Teams"
                 Connected=$Connect
-                ConnectErrors=$ConnectError
+                ConnectErrors=$ConnectError.Exception.Message
                 TestCommand=$Command
-                TestCommandErrors=$CommandError
+                TestCommandErrors=$CommandError.Exception.Message
             }
         }
     }
@@ -1344,7 +1430,7 @@ Function Test-Connections {
 
         Import-PSModule -ModuleName Microsoft.PowerApps.Administration.PowerShell -Implicit:$UseImplicitLoading
         # Reset vars
-        $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+        $Connect = $null; $ConnectError = $Null; $Command = $null; $CommandError = $Null
 
         Write-Host "$(Get-Date) Connecting to Power Apps..."
         if ($NoAdminUPN) {
@@ -1366,7 +1452,7 @@ Function Test-Connections {
         }
 
         # If no error, try test command
-        if ($ConnectError) { $Connect = $False; $Command = ""} Else { 
+        if ($ConnectError) { $Connect = $False } Else { 
             $Connect = $True 
             # Check if data is returned
             # Ensure that the correct module is used as Get-DlpPolicy also exists within the Exchange module
@@ -1391,9 +1477,9 @@ Function Test-Connections {
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="PowerApps"
             Connected=$Connect
-            ConnectErrors=$ConnectError
+            ConnectErrors=$ConnectError.Exception.Message
             TestCommand=$Command
-            TestCommandErrors=$CommandError
+            TestCommandErrors=$CommandError.Exception.Message
         }
     }
 
@@ -1853,6 +1939,7 @@ Function Install-SOAPrerequisites {
         [switch]$UseProxy,
         [Parameter(DontShow)][Switch]$AllowMultipleWindows,
         [Parameter(DontShow)][switch]$NoVersionCheck,
+        [Parameter(DontShow)][switch]$NoModuleLimitCheck,
         [switch]$RemoveMultipleModuleVersions,
         [switch]$UseImplicitLoading,
         [Parameter(ParameterSetName='Default')]
@@ -2111,10 +2198,11 @@ Function Install-SOAPrerequisites {
     }
 
     # Download module file to determine if any versions should be skipped. Used by both the Module and Connection checks
-    try {
-        $moduleResponse = Invoke-WebRequest -Uri "https://o365soa.github.io/soa/moduleversion.json" -UseBasicParsing
-    } catch {} 
-
+    if ($NoModuleLimitCheck -eq $false) {
+        try {
+            $moduleResponse = Invoke-WebRequest -Uri "https://o365soa.github.io/soa/moduleversion.json" -UseBasicParsing
+        } catch {} 
+    }
     if ($moduleResponse.StatusCode -eq 200) {
         $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
     }
@@ -2602,8 +2690,8 @@ Function Install-SOAPrerequisites {
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
-        ConnectionsOK=$Connections_OK
-        ConnectionsError=$Connections_Error
+        ConnectionsOK=($Connections_OK | Select-Object -Property Name,Connected,ConnectErrors,TestCommand,TestCommandErrors)
+        ConnectionsError=($Connections_Error | Select-Object -Property Name,Connected,ConnectErrors,TestCommand,TestCommandErrors)
     } | ConvertTo-Json | Out-File SOA-PreCheck.json
 
     Write-Host "$(Get-Date) Output saved to SOA-PreCheck.json which should be sent to the engineer who will be performing the assessment."
@@ -2613,7 +2701,7 @@ Function Install-SOAPrerequisites {
     Write-Host ""
 
     While($True) {
-        $rhInput = Read-Host "Type 'yes' when you have sent the SOA-PreCheck.json file to the engineer who will be performing the assessment."
+        $rhInput = Read-Host "Type 'yes' when you have sent the SOA-PreCheck.json file to the engineer who will be performing the assessment"
         if($rhInput -eq "yes") {
             break;
         }
