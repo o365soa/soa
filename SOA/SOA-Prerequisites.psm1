@@ -1243,7 +1243,13 @@ Function Test-Connections {
         $connectResponse = $null; $Connect = $null; $ConnectError = $null; $Command = $null; $CommandError = $null
 
         Write-Host "$(Get-Date) Connecting to SCC..."
-        $connectResponse = Connect-ToSCC -NoWAM:$false
+        if ($DisableWAM) {
+            $sccWamDisabled = $true
+            $connectResponse = Connect-ToSCC -NoWAM:$true
+        } else {
+            $connectResponse = Connect-ToSCC -NoWAM:$false
+        }
+        
         # Check for WAM error if not connected
         if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") -and $connectResponse.Exception.Message -like "*Unknown Status: Unexpected*") {
             Write-Warning -Message "$(Get-Date) Possible Web Authentication Manager (WAM) error occurred. Trying again without WAM."
@@ -2000,7 +2006,10 @@ Function Install-SOAPrerequisites {
             $InitialDomain,
         [ValidateScript({if ($PSItem -match "^\w+([-+.']\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*`$") {$true} else {throw "The value `"$PSItem`" is not a properly formatted UPN."}})]
             [string]$AdminUPN,
-        [switch]$NoAdminUPN
+        [switch]$NoAdminUPN,
+        [Parameter(ParameterSetName='Default')]
+        [Parameter(ParameterSetName='ConnectOnly')]
+            [switch]$DisableWAM
     )
 
     <#
