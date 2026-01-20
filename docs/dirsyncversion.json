@@ -29,10 +29,5 @@
         "Version": "2.4.129.0",
         "SupportEndDate": "\/Date(1774508400000)\/",
         "SecurityUpdate":  true
-    },
-    {
-        "Version": "2.4.27.0",
-        "SupportEndDate": "\/Date(1768460400298)\/",
-        "SecurityUpdate":  false
     }
 ]
