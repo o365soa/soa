@@ -17,6 +17,6 @@
     },
     {
         "ModuleName": "Microsoft.Graph.Authentication",
-        "MaximumVersion": ""
+        "MaximumVersion": "2.33.0"
     }
 ]
