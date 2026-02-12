@@ -9,7 +9,7 @@
     },
     {
         "ModuleName": "ExchangeOnlineManagement",
-        "MaximumVersion": "3.6.0"
+        "MaximumVersion": ""
     },
     {
         "ModuleName": "Microsoft.PowerApps.Administration.PowerShell",
