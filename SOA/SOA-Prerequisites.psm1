@@ -489,7 +489,7 @@ Function Install-EntraApp {
             'redirectUris' = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
         }
         'publicClient' = @{
-            'redirectUris' = @("https://login.microsoftonline.com/common/oauth2/nativeclient")
+            'redirectUris' = @("https://login.microsoftonline.com/common/oauth2/nativeclient","http://localhost")
         }
     }
 
@@ -1795,7 +1795,7 @@ function Get-SOAEntraApp {
         }
 
         # Check if public client URI is set
-        $pcRUrl = @('https://login.microsoftonline.com/common/oauth2/nativeclient')
+        $pcRUrl = @('https://login.microsoftonline.com/common/oauth2/nativeclient','http://localhost')
         if ($EntraApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
@@ -2497,7 +2497,8 @@ Function Install-SOAPrerequisites {
 
             # Check if redirect URIs not set for existing app because DoNotRemediate is True. Needs to be evaluated after switching to Application permissions for scenarios where Delegated is not used.
             $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-            if (($EntraApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
+            $pcRUri = @("https://login.microsoftonline.com/common/oauth2/nativeclient","http://localhost")
+            if (((Compare-Object -ReferenceObject $EntraApp.PublicClient.RedirectUris -DifferenceObject $pcRUri) -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
                 # Fail the Entra app check
                 $CheckResults += New-Object -Type PSObject -Property @{
                     Check="Entra Application"
