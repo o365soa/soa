@@ -1151,6 +1151,10 @@ Function Test-Connections {
     #>
     $connectToGraph = $false
     $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
+        # Force EXO module to be loaded before the Graph SDK to avoid conflicts in authentication libraries
+        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
+    }
     # Teams and SPO connections are dependent on Graph connection to determine Teams service plans and to get initial domain
     if ($Bypass -notcontains 'Teams' -or $Bypass -notcontains 'SPO' ) {
         if ($Bypass -contains 'Graph') {
@@ -1237,9 +1241,6 @@ Function Test-Connections {
         SCC
     
     #>
-    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
-        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
-    }
 
     If($Bypass -notcontains "SCC") {
         # Reset vars
