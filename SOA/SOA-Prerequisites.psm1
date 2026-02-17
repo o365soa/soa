@@ -504,6 +504,9 @@ Function Install-EntraApp {
     # Add service principal (enterprise app) as owner of its app registration
     $appSp = Get-SOAAppServicePrincipal -EntraApp $EntraApp
     if ($appSp) {
+
+        Hide-SOAApp -EntraApp $EntraApp
+
         if (Add-SOAAppOwner -NewOwnerObjectId $appSp.Id -EntraApp $EntraApp) {
             $script:appSelfOwner = $true
         } else {
@@ -1884,6 +1887,18 @@ function Add-SOAAppOwner {
     Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
     Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -Body $params
     if ($?) {return $true} else {return $false}
+}
+
+function Hide-SOAApp {
+    param (
+        $EntraApp
+    )
+
+    $tags = @("HideApp")
+
+    Write-Verbose "$(Get-Date) Hiding the service principal to not be visible to users..."
+    Invoke-MgGraphRequest -Method PATCH -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -Body @{ tags = $tags }
+
 }
 
 Function Test-SOAApplication
