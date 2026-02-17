@@ -2339,6 +2339,20 @@ Function Install-SOAPrerequisites {
 
     If($ModuleCheck -eq $True) {
 
+        # Define the table columns to display when showing modules that have errors
+        $moduleErrorTableColumns = if ($RemoveMultipleModuleVersions) {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','Conflict','Multiple','NewerAvailable' }
+        } else {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','Conflict','NewerAvailable' }
+        }
+
+        # Define the table columns to display when showing modules that are OK
+        $moduleOKTableColumns = if ($RemoveMultipleModuleVersions) {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','Multiple','NewerAvailable' }
+        } else {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','NewerAvailable' }
+        }
+
         # Determine if the nuget provider is available
 
         If(!(Get-PackageProvider -Name nuget -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
@@ -2367,12 +2381,8 @@ Function Install-SOAPrerequisites {
 
         If($Modules_Error.Count -gt 0) {
             Write-Host "$(Get-Date) Modules that require remediation:" -ForegroundColor Yellow
-            if ($RemoveMultipleModuleVersions) {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-            }
-            else {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
-            }
+            
+            $Modules_Error | Format-Table @moduleErrorTableColumns
 
             # Fix modules with errors unless instructed not to
             if ($DoNotRemediate -eq $false){
@@ -2395,12 +2405,8 @@ Function Install-SOAPrerequisites {
             
             If($Modules_Error.Count -gt 0) {
                 Write-Host "$(Get-Date) The following modules have errors (a property value is True) that must be remediated:" -ForegroundColor Red
-                if ($RemoveMultipleModuleVersions) {
-                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-                }
-                else {
-                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
-                }
+                
+                $Modules_Error | Format-Table @moduleErrorTableColumns
                 
                 if ($RemoveMultipleModuleVersions -and ($Modules_Error | Where-Object {$_.Multiple -eq $true})){
                     Write-Host "Paths to modules with multiple versions:"
@@ -2696,35 +2702,23 @@ Function Install-SOAPrerequisites {
 
     Write-Host "$(Get-Date) Detailed Output"
 
-    If($ModuleCheck -eq $True) 
-    {
+    if ($ModuleCheck -eq $True) {
 
         Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
-        if ($RemoveMultipleModuleVersions) {
-            $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,NewerAvailable
-        }
-        else {
-            $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,NewerAvailable
-        }
         
-        If($Modules_Error.Count -gt 0) 
-        {
+        $Modules_OK | Format-Table @moduleOKTableColumns
+        
+        if ($Modules_Error.Count -gt 0) {
             Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-            if ($RemoveMultipleModuleVersions) {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-            }
-            else {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
-            }
+
+            $Modules_Error | Format-Table @moduleErrorTableColumns
 
             $CheckResults += New-Object -TypeName PSObject -Property @{
                 Check="Module Installation"
                 Pass=$False
             }
 
-        } 
-        Else 
-        {
+        } else {
             $CheckResults += New-Object -TypeName PSObject -Property @{
                 Check="Module Installation"
                 Pass=$True
