@@ -9,7 +9,6 @@
     .DESCRIPTION
         Contains installation cmdlet which must be run prior to a Microsoft
         proactive offering for any of the following security assessments:
-        - Office 365 Security Optimization Assessment
         - Microsoft 365 Foundations: Workload Security Assessment
         - Security Optimization Assessment for Microsoft Defender
 
@@ -398,7 +397,7 @@ Function Invoke-AppPermissionCheck
 }
 
 
-Function Invoke-AppTokenRolesCheckV2 {
+Function Invoke-AppTokenRolesCheck {
     <#
     
         This function checks for the presence of the right scopes on the
@@ -407,22 +406,31 @@ Function Invoke-AppTokenRolesCheckV2 {
 
     #>
     Param (
-        [string]$CloudEnvironment
+        [string]$CloudEnvironment,
+        [ValidateSet("Application","Delegated")][string]$CheckType="Application"
     )
 
     $Roles = Get-RequiredAppPermissions -CloudEnvironment $CloudEnvironment -HasMDELicense $MDELicensed -HasMDILicense $MDILicensed -HasATPP2License $ATPP2Licensed
 
     $ActiveScopes = (Get-MgContext).Scopes
-    $MissingRoles = @()
+    $MissingPermissions = @()
 
-    ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000"})) {
+    if ($CheckType -eq "Application") {
+        # Application permission (Roles)
+        $Type = "Role"
+    } else {
+        # Delegated permission (Scopes)
+        $Type = "Scope"
+    }
+
+    ForEach($Role in ($Roles | Where-Object {$_.Resource -eq "00000003-0000-0000-c000-000000000000" -and $_.Type -eq $Type})) {
         If($ActiveScopes -notcontains $Role.Name) {
-            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheckV2 missing $($Role.Name)"
-            $MissingRoles += $Role
+            Write-Verbose "$(Get-Date) Invoke-AppTokenRolesCheck missing $($Role.Name)"
+            $MissingPermissions += $Role
         }
     }
 
-    If($MissingRoles.Count -eq 0) {
+    If($MissingPermissions.Count -eq 0) {
         $return = $true
     } Else {
         $return = $false
@@ -1130,7 +1138,77 @@ function Connect-ToExchange {
     Connect-ExchangeOnline -PSSessionOption $RPSProxySetting -ShowBanner:$false -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -ErrorVariable ConnectError @EXOArguments | Out-Null
 
     return $ConnectError
+   
+}
+function Connect-ToGraph {
+    <#
+
+        Handles repeated Delegated permission connections to Graph, but not Application permission connections
     
+    #>
+    param (
+        [switch]$NoWAM,
+        [string]$ClientId=$GraphClientId, # Optional: Could have been specified when Install-SOAPrerequisites was invoked
+        [string]$Tenant=$InitialDomain # Optional: Could have been specified when Install-SOAPrerequisites was invoked
+    )
+
+    switch ($CloudEnvironment) {
+        "Commercial"   {$cloud = 'Global'}
+        "USGovGCC"     {$cloud = 'Global'}
+        "USGovGCCHigh" {$cloud = 'USGov'}
+        "USGovDoD"     {$cloud = 'USGovDoD'}
+        "China"        {$cloud = 'China'}
+    }
+
+    if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
+    if ($ConnectError) {Remove-Variable -Name ConnectError}
+
+    $connCount = 0
+    $connLimit = 5
+    do {
+        try {
+            $connCount++
+            Write-Verbose "$(Get-Date) Graph connection attempt #$connCount"
+
+            $GraphArguments = @{} # Build hashtable of optional arguments to splat during the connection
+
+            if ($CloudEnvironment -eq "China") {
+                # Connections to 21Vianet must have provided the ClientID and Tenant manually
+                if (-not $GraphClientId -or -not $InitialDomain ) {
+                    Exit-Script
+                    throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
+                }
+            }
+
+            if ($NoWAM) {
+                # WAM can only be disabled when using a custom ClientId value
+                Set-MgGraphOption -DisableLoginByWAM $true
+            }
+            if ($ClientId) {
+                $GraphArguments.Add("ClientId", $ClientId)
+            }
+            if ($Tenant) {
+                $GraphArguments.Add("Tenant", $Tenant)
+            }
+
+            # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
+            # However Organization.Read.All is being used because that is the least-common scope for getting licenses in the app check
+            if ($PromptForApplicationSecret) {
+                $GraphArguments.Add("Scopes", 'Application.Read.All, Organization.Read.All')
+            } else {
+                $GraphArguments.Add("Scopes", 'Application.ReadWrite.All, Organization.Read.All')
+            }
+
+            Connect-MgGraph -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError @GraphArguments | Out-Null
+        }
+        catch {
+            Write-Verbose $_
+            Start-Sleep 1
+        }
+    }
+    until ($null -ne (Get-MgContext) -or $connCount -eq $connLimit)
+
+    return $ConnectError
 }
 
 Function Test-Connections {
@@ -1167,71 +1245,81 @@ Function Test-Connections {
     }
     if ($connectToGraph -eq $true) {
         Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
-        switch ($CloudEnvironment) {
-            "Commercial"   {$cloud = 'Global'}
-            "USGovGCC"     {$cloud = 'Global'}
-            "USGovGCCHigh" {$cloud = 'USGov'}
-            "USGovDoD"     {$cloud = 'USGovDoD'}
-            "China"        {$cloud = 'China'}
-        }
-        $ConnContext = (Get-MgContext).Scopes
-        if (($ConnContext -notcontains 'Application.ReadWrite.All' -and $PromptForApplicationSecret -eq $False) -or ($ConnContext -notcontains 'Application.Read.All' -and $PromptForApplicationSecret -eq $True) -or ($ConnContext -notcontains 'Organization.Read.All' -and $ConnContext -notcontains 'Directory.Read.All')) {
-            Write-Host "$(Get-Date) Connecting to Microsoft Graph (with delegated authentication)..."
-            if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
-            $connCount = 0
-            $connLimit = 5
-            do {
-                try {
-                    $connCount++
-                    Write-Verbose "$(Get-Date) Test-Connections: Graph Delegated connection attempt #$connCount"
-                    # User.Read is sufficient for using the organization API to get the domain for the Teams/SPO connections
-                    # Using Organization.Read.All because that is the least-common scope for getting licenses in the app check
 
-                    if ($CloudEnvironment -eq "China") {
-                        # Connections to 21Vianet must have provided the ClientID and Tenant manually
-                        if (-not $GraphClientId -or -not $InitialDomain ) {
-                            Exit-Script
-                            throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
-                        }
-                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -ClientId $GraphClientId -Tenant $InitialDomain -NoWelcome -ErrorVariable ConnectError| Out-Null
-                    } elseif ($PromptForApplicationSecret) {
-                        # Request read-only permissions to Graph if manually providing the client secret
-                        Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
-                    } else {
-                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -NoWelcome -ErrorVariable ConnectError | Out-Null
-                    }
-                }
-                catch {
-                    Write-Verbose $_
-                    Start-Sleep 1
-                }
-            }
-            until ($null -ne (Get-MgContext) -or $connCount -eq $connLimit)
+        $ConnContext = (Get-MgContext).Scopes
+
+        if (($ConnContext -notcontains 'Application.ReadWrite.All' -and $PromptForApplicationSecret -eq $False) -or ($ConnContext -notcontains 'Application.Read.All' -and $PromptForApplicationSecret -eq $True) -or ($ConnContext -notcontains 'Organization.Read.All' -and $ConnContext -notcontains 'Directory.Read.All')) {
+            # Test with a Delegated connection to the app used by the Graph SDK
+
+            Write-Host "$(Get-Date) Connecting to Microsoft Graph Command Line Tools with delegated authentication..."
+            $graphResponse = Connect-ToGraph
+            $SDKConnectError = ($graphResponse | Select-Object -Last 1).Exception | Select-Object -ExpandProperty Message
+
             if ($null -eq (Get-MgContext)) {
                 Write-Error -Message "Unable to connect to Graph. Skipping dependent connection tests."
-                $Connect = $False
+                $SDKConnect = $False
             }
             else {
-                $Connect = $True
+                $SDKConnect = $True
                 $GraphSDKConnected = $true
             }
         } else {
-            Write-Host "$(Get-Date) Connecting to Microsoft Graph (with delegated authentication)..." -NoNewline
+            Write-Host "$(Get-Date) Connecting to Microsoft Graph Command Line Tools with delegated authentication..." -NoNewline
             Write-Host " Already connected (Run Disconnect-MgGraph if you want to reconnect to Graph)" -ForegroundColor Green
-            $Connect = $True
+            $SDKConnect = $True
             $GraphSDKConnected = $true
         }
-        if ($Connect -eq $true) {
-            $org = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/organization" -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable CommandError).Value
-            if ($org.id) {$Command = $true} else {$Command = $false}
+
+        if ($SDKConnect -eq $true) {
+
+            $SDKorg = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/organization" -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable SDKCommandError).Value
+
+            if ($SDKorg.id) {
+                $SDKCommand = $true
+            
+                # Repeat the connection test but with a Delegated connection to the SOA app
+                Write-Host "$(Get-Date) Connecting to Microsoft 365 Security Assessment with delegated authentication..." -NoNewline
+
+                $Domain = ($SDKorg.VerifiedDomains | Where-Object {$_.isInitial -eq $true}).Name
+                $EntraApp = Get-SOAEntraApp -CloudEnvironment $CloudEnvironment
+                Write-Host "$($EntraApp.AppId)"
+                
+                Disconnect-MgGraph
+                $AppResponse = Connect-ToGraph -Tenant $Domain -ClientId $EntraApp.AppId
+                $AppConnectError = ($AppResponse | Select-Object -Last 1).Exception | Select-Object -ExpandProperty Message
+                
+                if ($null -eq (Get-MgContext)) {
+                    Write-Error -Message "Unable to connect to Graph. Skipping dependent connection tests."
+                    $AppConnect = $False
+                } else {
+                    $AppConnect = $True
+                }
+
+                $AppOrg = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/organization" -OutputType PSObject -ErrorAction SilentlyContinue -ErrorVariable AppCommandError).Value
+
+                if ($AppOrg.id) {
+                    $AppCommand = $true
+                } else {
+                    $AppCommand = $false
+                }
+
+            } else {$SDKCommand = $false}
         }
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="GraphSDK"
-            Connected=$Connect
-            ConnectErrors=$ConnectError.Exception.Message
-            TestCommand=$Command
-            TestCommandErrors=$CommandError.Exception.Message
+            Connected=$SDKConnect
+            ConnectErrors=$SDKConnectError.Exception.Message
+            TestCommand=$SDKCommand
+            TestCommandErrors=$SDKCommandError.Exception.Message
+        }
+
+        $Connections += New-Object -TypeName PSObject -Property @{
+            Name="AppRegistration"
+            Connected=$AppConnect
+            ConnectErrors=$AppConnectError.Exception.Message
+            TestCommand=$AppCommand
+            TestCommandErrors=$AppCommandError.Exception.Message
         }
     }
 
@@ -1265,7 +1353,7 @@ Function Test-Connections {
             $Connect = $True
         } else {
             $Connect = $False
-            $connectionError = ($connectResponse | Select-Object -Last 1).Exception | Select-Object -ExpandProperty Message
+            $ConnectError = ($connectResponse | Select-Object -Last 1).Exception | Select-Object -ExpandProperty Message
         }
 
         # Has test command been imported. Not actually running it
@@ -1281,7 +1369,7 @@ Function Test-Connections {
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="SCC"
             Connected=$Connect
-            ConnectErrors=$connectionError
+            ConnectErrors=$ConnectError
             TestCommand=$Command
             TestCommandErrors=$CommandError.Exception.Message
         }
@@ -1519,6 +1607,29 @@ Function Get-RequiredAppPermissions {
     $AppRoles = @()
 
     # Microsoft Graph
+    # Delegated permission
+    switch ($CloudEnvironment) {
+        default {$GUID = "bdfbf15f-ee85-4955-8675-146e8e5296b5"}
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID=$GUID
+        Name="Application.ReadWrite.All"
+        Type='Scope'
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+
+    switch ($CloudEnvironment) {
+        default {$GUID = "4908d5b9-3fb2-4b1e-9336-1888b7937185"}
+    }
+    $AppRoles += New-Object -TypeName PSObject -Property @{
+        ID=$GUID
+        Name="Organization.Read.All"
+        Type='Scope'
+        Resource="00000003-0000-0000-c000-000000000000" # Graph
+    }
+
+
+    # Application permission
     if ($CloudEnvironment -ne "China") {
         $AppRoles += New-Object -TypeName PSObject -Property @{
             ID="6e472fd1-ad78-48da-a0f0-97ab2c6b769e"
@@ -1910,7 +2021,7 @@ Function Test-SOAApplication
     # Perform check for consent
     if ($PermCheck -eq $True) {
         If ($WriteHost) { Write-Host "$(Get-Date) Performing token check... (This may take up to 5 minutes)" }
-        $TokenCheck = Invoke-AppTokenRolesCheckV2 -CloudEnvironment $CloudEnvironment
+        $TokenCheck = Invoke-AppTokenRolesCheck -CloudEnvironment $CloudEnvironment
     } else {
         # Set as False to ensure the final result shows the check as Failed instead of Null
         $TokenCheck = $False
@@ -1936,7 +2047,7 @@ Function Test-SOAApplication
         UserCount=$countResponse."@odata.count"
         CountNote=$countNote
     }
-                
+
 }
 
 Function Install-SOAPrerequisites {
@@ -2084,7 +2195,7 @@ Function Install-SOAPrerequisites {
     Start-Transcript "$SOADirectory\$TranscriptName"
 
     if ($DoNotRemediate){
-        Write-Host "$(Get-Date) The DoNotRemediate switch was used.  Any missing or outdated modules, as well as the registration and/or configuration of the Microsoft Entra enterprise application will not be performed." -ForegroundColor Yellow
+        Write-Host "$(Get-Date) The DoNotRemediate switch was used. Any missing or outdated modules, as well as the registration and/or configuration of the Microsoft Entra enterprise application will not be performed." -ForegroundColor Yellow
     }
 
     if ($NoVersionCheck) {
@@ -2228,6 +2339,20 @@ Function Install-SOAPrerequisites {
 
     If($ModuleCheck -eq $True) {
 
+        # Define the table columns to display when showing modules that have errors
+        $moduleErrorTableColumns = if ($RemoveMultipleModuleVersions) {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','Conflict','Multiple','NewerAvailable' }
+        } else {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','Conflict','NewerAvailable' }
+        }
+
+        # Define the table columns to display when showing modules that are OK
+        $moduleOKTableColumns = if ($RemoveMultipleModuleVersions) {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','Multiple','NewerAvailable' }
+        } else {
+            @{ Property = 'Module','InstalledVersion','GalleryVersion','NewerAvailable' }
+        }
+
         # Determine if the nuget provider is available
 
         If(!(Get-PackageProvider -Name nuget -ErrorAction:SilentlyContinue -WarningAction:SilentlyContinue)) {
@@ -2256,12 +2381,8 @@ Function Install-SOAPrerequisites {
 
         If($Modules_Error.Count -gt 0) {
             Write-Host "$(Get-Date) Modules that require remediation:" -ForegroundColor Yellow
-            if ($RemoveMultipleModuleVersions) {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-            }
-            else {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
-            }
+            
+            $Modules_Error | Format-Table @moduleErrorTableColumns
 
             # Fix modules with errors unless instructed not to
             if ($DoNotRemediate -eq $false){
@@ -2284,12 +2405,8 @@ Function Install-SOAPrerequisites {
             
             If($Modules_Error.Count -gt 0) {
                 Write-Host "$(Get-Date) The following modules have errors (a property value is True) that must be remediated:" -ForegroundColor Red
-                if ($RemoveMultipleModuleVersions) {
-                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-                }
-                else {
-                    $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
-                }
+                
+                $Modules_Error | Format-Table @moduleErrorTableColumns
                 
                 if ($RemoveMultipleModuleVersions -and ($Modules_Error | Where-Object {$_.Multiple -eq $true})){
                     Write-Host "Paths to modules with multiple versions:"
@@ -2396,38 +2513,13 @@ Function Install-SOAPrerequisites {
         }
 
         $mgContext =  (Get-MgContext).Scopes
+
         # Skip delegated connection if providing GraphClientId and the App Secret manually, otherwise evaluate whether the correct scope was requested
         if ($mgContext -notcontains 'Application.ReadWrite.All' -or ($mgContext -notcontains 'Organization.Read.All' -and $mgContext -notcontains 'Directory.Read.All') -and ($null -eq $GraphClientId -or $PromptForApplicationSecret -ne $true)) {
-            Write-Host "$(Get-Date) Connecting to Graph with delegated authentication..."
-            if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
-            $connCount = 0
-            $connLimit = 5
-            do {
-                try {
-                    $connCount++
-                    Write-Verbose "$(Get-Date) Install-SOAPrerequisites: Graph Delegated connection attempt #$connCount"
+            
+            Write-Host "$(Get-Date) Connecting to Microsoft Graph Command Line Tools with delegated authentication..."
+            Connect-ToGraph
 
-                    if ($CloudEnvironment -eq "China") {
-                        # Connections to 21Vianet must have manually provided the App ID and tenant name
-                        if (-not $GraphClientId -or -not $InitialDomain) {
-                            Exit-Script
-                            throw "$(Get-Date) Connections to Graph in 21Vianet require the application ID (client ID) and tenant name (initial domain) be manually provided. Use both `-GraphClientId` and `-InitialDomain` parameters to provide them. For more information, see https://github.com/o365soa/soa."
-                        }
-
-                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" -ClientId $GraphClientId -Tenant $InitialDomain | Out-Null
-                    } elseif ($PromptForApplicationSecret) {
-                        # Request read-only permissions to Graph if manually providing the client secret
-                        Connect-MgGraph -Scopes 'Application.Read.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
-                    } else {
-                        Connect-MgGraph -Scopes 'Application.ReadWrite.All','Organization.Read.All' -Environment $cloud -ContextScope "Process" | Out-Null
-                    }
-                }
-                catch {
-                    Write-Verbose $_
-                    Start-Sleep 1
-                }
-            }
-            until ($null -ne (Get-MgContext) -or $connCount -eq $connLimit)
             if ($null -eq (Get-MgContext)) {
                 Write-Error -Message "Unable to connect to Graph. Skipping Microsoft Entra application check."
             }
@@ -2473,6 +2565,19 @@ Function Install-SOAPrerequisites {
                 Start-Sleep 10
             }
 
+            # Check whether the Delegated scopes have been consented before switching to App
+            $DelegatedSDKCheck = Invoke-AppTokenRolesCheck -CloudEnvironment $CloudEnvironment -CheckType "Delegated"
+
+            if ($DelegatedSDKCheck) {
+                Write-Host "$(Get-Date) Connecting to Microsoft 365 Security Assessment with delegated authentication..."
+
+                Connect-ToGraph -Tenant $tenantdomain -ClientId $EntraApp.AppId
+
+                $DelegatedAppCheck = Invoke-AppTokenRolesCheck -CloudEnvironment $CloudEnvironment -CheckType "Delegated"
+            } else {
+                $DelegatedAppCheck = $false
+            }
+
             # Reconnect with Application permissions
             Try {Disconnect-MgGraph -ErrorAction Stop | Out-Null} Catch {}
             if ($GraphClientId) {
@@ -2482,7 +2587,7 @@ Function Install-SOAPrerequisites {
             }
             
             $ConnCount = 0
-            Write-Host "$(Get-Date) Connecting to Graph with application authentication..."
+            Write-Host "$(Get-Date) Connecting to Microsoft 365 Security Assessment with application authentication..."
             Do {
                 Try {
                     $ConnCount++
@@ -2528,13 +2633,13 @@ Function Install-SOAPrerequisites {
             {
                 # Set up the correct Entra App Permissions
                 Write-Host "$(Get-Date) Remediating application permissions..."
-                Write-Host "$(Get-Date) Reconnecting to Graph with delegated authentication..."
+                Write-Host "$(Get-Date) Reconnecting to Microsoft Graph Command Line Tools with delegated authentication..."
                 # No scopes need to be explicitly requested here because the user will have already consented to them in the previous delegated connection
                 Connect-MgGraph -Environment $cloud -ContextScope "Process" | Out-Null
                 If((Set-EntraAppPermission -App $EntraApp -PerformConsent:$True -CloudEnvironment $CloudEnvironment) -eq $True) {
                     # Perform check again after setting permissions
                     $ConnCount = 0
-                    Write-Host "$(Get-Date) Reconnecting to Graph with application authentication..."
+                    Write-Host "$(Get-Date) Reconnecting to Microsoft 365 Security Assessment with application authentication..."
                     Do {
                         Try {
                             $ConnCount++
@@ -2544,6 +2649,7 @@ Function Install-SOAPrerequisites {
                             Start-Sleep 5
                         }
                     } Until ($null -ne (Get-MgContext))
+
                     $AppTest = Test-SOAApplication -App $EntraApp -Secret $clientsecret -TenantDomain $tenantdomain -CloudEnvironment $CloudEnvironment -WriteHost
                 }
             }
@@ -2569,47 +2675,22 @@ Function Install-SOAPrerequisites {
                 Check="Entra App Role Consent"
                 Pass=$AppTest.Token
             }
-
-            Write-Host "$(Get-Date) Performing Graph Test..."
-            # Perform Graph check using credentials on the App
-            if ($null -ne (Get-MgContext)){Disconnect-MgGraph | Out-Null}
-            Start-Sleep 10 # Avoid a race condition
-            Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction SilentlyContinue -ErrorVariable ConnectError | Out-Null
-            
-            If($ConnectError){
-                # Try again to confirm it wasn't a transient issue
-                Write-Verbose "$(Get-Date) Error when connecting using Graph SDK. Retrying in 15 seconds"
-                Start-Sleep 15
-                Connect-MgGraph -TenantId $tenantdomain -ClientSecretCredential $GraphCred -Environment $cloud -ErrorAction SilentlyContinue -ErrorVariable ConnectError2 | Out-Null
-                if ($ConnectError2) {
-                    $CheckResults += New-Object -Type PSObject -Property @{
-                        Check="Graph SDK Connection"
-                        Pass=$False
-                    }
-                } else {
-                    $CheckResults += New-Object -Type PSObject -Property @{
-                        Check="Graph SDK Connection"
-                        Pass=$True
-                    }
-                }
+            $CheckResults += New-Object -Type PSObject -Property @{
+                Check="Entra App Scope Consent"
+                Pass=$DelegatedAppCheck
             }
-            else {
-                $CheckResults += New-Object -Type PSObject -Property @{
-                    Check="Graph SDK Connection"
-                    Pass=$True
-                }
 
-                if ($PromptForApplicationSecret -eq $false) {
-                    Start-Sleep 10 # Avoid a race condition
-                    # Remove client secret
-                    Remove-SOAAppSecret
-                }
-                # Disconnect
-                Disconnect-MgGraph | Out-Null
+
+            if ($PromptForApplicationSecret -eq $false) {
+                Start-Sleep 10 # Avoid a race condition
+                # Remove client secret
+                Remove-SOAAppSecret
             }
-        } 
-        Else 
-        {
+
+            # Disconnect
+            Disconnect-MgGraph | Out-Null
+
+        } else {
             # Entra application does not exist
             $CheckResults += New-Object -Type PSObject -Property @{
                 Check="Entra Application"
@@ -2621,35 +2702,23 @@ Function Install-SOAPrerequisites {
 
     Write-Host "$(Get-Date) Detailed Output"
 
-    If($ModuleCheck -eq $True) 
-    {
+    if ($ModuleCheck -eq $True) {
 
         Write-Host "$(Get-Date) Installed Modules" -ForegroundColor Green
-        if ($RemoveMultipleModuleVersions) {
-            $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,Multiple,NewerAvailable
-        }
-        else {
-            $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,NewerAvailable
-        }
         
-        If($Modules_Error.Count -gt 0) 
-        {
+        $Modules_OK | Format-Table @moduleOKTableColumns
+        
+        if ($Modules_Error.Count -gt 0) {
             Write-Host "$(Get-Date) Modules with errors" -ForegroundColor Red
-            if ($RemoveMultipleModuleVersions) {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
-            }
-            else {
-                $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
-            }
+
+            $Modules_Error | Format-Table @moduleErrorTableColumns
 
             $CheckResults += New-Object -TypeName PSObject -Property @{
                 Check="Module Installation"
                 Pass=$False
             }
 
-        } 
-        Else 
-        {
+        } else {
             $CheckResults += New-Object -TypeName PSObject -Property @{
                 Check="Module Installation"
                 Pass=$True
