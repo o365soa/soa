@@ -211,7 +211,10 @@ function Remove-SOAAppSecret {
     $App = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject -ErrorAction SilentlyContinue).Value
 
     $secrets = $App.passwordCredentials
+    $i = 0
     foreach ($secret in $secrets) {
+        $i++
+        if ($i -gt 1) {Start-Sleep -Seconds 1} # Sleep to avoid concurrency errors on subsequent secrets
         # Suppress errors in case a secret no longer exists
         try {
             Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($App.appId)`')/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
