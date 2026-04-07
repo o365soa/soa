@@ -1,7 +1,12 @@
 [
     {
-        "Version": "2.6.1.0",
+        "Version": "2.6.3.0",
         "SupportEndDate": "\/Date(1914476400000)\/",
+        "SecurityUpdate":  false
+    },
+    {
+        "Version": "2.6.1.0",
+        "SupportEndDate": "\/Date(1804665600000)\/",
         "SecurityUpdate":  false
     },
     {
@@ -28,10 +33,5 @@
         "Version": "2.4.131.0",
         "SupportEndDate": "\/Date(1779778800000)\/",
         "SecurityUpdate":  false
-    },
-    {
-        "Version": "2.4.129.0",
-        "SupportEndDate": "\/Date(1774508400000)\/",
-        "SecurityUpdate":  true
     }
 ]
