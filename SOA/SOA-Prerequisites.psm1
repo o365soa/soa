@@ -822,8 +822,22 @@ Function Install-ADDSModule {
         }
     }
     else {
-        Exit-Script
-        throw "$(Get-Date) You must be running PowerShell as an administrator in order to install the Active Directory module."
+        if ($ADModuleOnly -eq $true) {
+            Exit-Script
+            throw "$(Get-Date) You must be running PowerShell as an administrator to install the Active Directory module."
+        }
+        else {
+            # When the installation is not limited to the AD module, warn and ask whether to continue
+            Write-Warning -Message "$(Get-Date) You must be running PowerShell as an administrator to install the Active Directory module."
+            $continue = Read-Host -Prompt "Do you want to continue without installing the Active Directory module? (Y/N)"
+            if ($continue -eq "Y") {
+                Write-Warning -Message "$(Get-Date) Remember to install the Active Directory module."
+                Start-Sleep -Seconds 2
+            } else {
+                Exit-Script
+                throw
+            }
+        }
     }
 }
 
@@ -2215,6 +2229,9 @@ Function Install-SOAPrerequisites {
     if ($moduleResponse.StatusCode -eq 200) {
         $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
     }
+    if ($NoModuleLimitCheck -eq $false -and -not $script:moduleVersions) {
+        Write-Warning -Message "Unable to download module version information from GitHub.io. Any version limits will not be enforced."
+    }
 
     <# 
 
@@ -2279,7 +2296,7 @@ Function Install-SOAPrerequisites {
             }
             
             If($Modules_Error.Count -gt 0) {
-                Write-Host "$(Get-Date) The following modules have errors (a property value is True) that must be remediated:" -ForegroundColor Red
+                Write-Host "$(Get-Date) The following modules have an error (a property value is True) that must be remediated:" -ForegroundColor Red
                 if ($RemoveMultipleModuleVersions) {
                     $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
                 }
@@ -2299,10 +2316,14 @@ Function Install-SOAPrerequisites {
                     }
                 }
                 
-                # Don't continue to check connections
-                Exit-Script
-                throw "$(Get-Date) The above modules must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
-                
+                # Don't continue with checking connections (unless only the AD module had an error)
+                if ($Modules_Error.Count -eq 1 -and ($Modules_Error | Where-Object {$_.Module -eq "ActiveDirectory"})) {
+                    Write-Warning -Message "$(Get-Date) The only module with an error is ActiveDirectory. The script will continue, but the error must be remediated if the Active Directory collection will be run from this machine."
+                }
+                else {
+                    Exit-Script
+                    throw "$(Get-Date) The above modules must be remediated before continuing. Contact the delivery engineer for assistance, if needed."
+                }
             }
         }
     }
