@@ -592,7 +592,7 @@ Function Get-ModuleStatus {
 
     Return New-Object -TypeName PSObject -Property @{
         Module=$ModuleName
-        InstalledVersion=$InstalledModule.Version
+        InstalledVersion= $(if ($InstalledModule.Version) { $InstalledModule.Version } else { "None" })
         GalleryVersion=$(if ($MaxVersion) { "$GalleryVersion (*)" } else { $GalleryVersion })
         Installed=$Installed
         Conflict=$(if ($Installed -and $ConflictModule) { $True } else { $False })
@@ -855,7 +855,7 @@ Function Invoke-ModuleFix {
     #>
     Param($Modules)
 
-    $OutdatedModules = $Modules | Where-Object {$null -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
+    $OutdatedModules = $Modules | Where-Object {'None' -ne $_.InstalledVersion -and $_.NewerAvailable -eq $true -and $_.Conflict -ne $True}
     # Administrator needed to remove modules in other profiles
     if ($RemoveMultipleModuleVersions) {
         if (Get-IsAdministrator) {
@@ -867,9 +867,9 @@ Function Invoke-ModuleFix {
             return $False
         } 
     }
-    $MissingGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -ne $_.GalleryVersion }
+    $MissingGalleryModules = $Modules | Where-Object {$_.InstalledVersion -eq "None" -and $null -ne $_.GalleryVersion }
     $ConflictModules = $Modules | Where-Object {$_.Conflict -eq $True}
-    $MissingNonGalleryModules = $Modules | Where-Object {$null -eq $_.InstalledVersion -and $null -eq $_.GalleryVersion}
+    $MissingNonGalleryModules = $Modules | Where-Object {$_.InstalledVersion -eq "None" -and $null -eq $_.GalleryVersion}
 
     # Determine status of PSGallery repository
     $PSGallery = Get-PSRepository -Name "PSGallery"
@@ -2159,7 +2159,7 @@ Function Install-SOAPrerequisites {
         $ModuleCheckResult = @(Get-ModuleStatus -ModuleName "ActiveDirectory")
         $ModuleCheckResult | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
 
-        If($null -ne $ModuleCheckResult.InstalledVersion) {
+        If('None' -ne $ModuleCheckResult.InstalledVersion) {
             Write-Host "$(Get-Date) ActiveDirectory module is already installed"
         }
         Else {
@@ -2315,7 +2315,7 @@ Function Install-SOAPrerequisites {
             }
             
             If($Modules_Error.Count -gt 0) {
-                Write-Host "$(Get-Date) The following modules have an error (a property value is True) that must be remediated:" -ForegroundColor Red
+                Write-Host "$(Get-Date) The following modules have an error that must be remediated:" -ForegroundColor Red
                 if ($RemoveMultipleModuleVersions) {
                     $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,Multiple,NewerAvailable
                 }
@@ -2337,7 +2337,7 @@ Function Install-SOAPrerequisites {
                 
                 # Don't continue with checking connections (unless only the AD module had an error)
                 if ($Modules_Error.Count -eq 1 -and ($Modules_Error | Where-Object {$_.Module -eq "ActiveDirectory"})) {
-                    Write-Warning -Message "$(Get-Date) The only module with an error is ActiveDirectory. The script will continue, but the error must be remediated if the Active Directory collection will be run from this machine."
+                    Write-Warning -Message "$(Get-Date) The only module with an error is ActiveDirectory. The script will continue, but the error must be remediated if the Active Directory collection script will be run on this machine."
                 }
                 else {
                     Exit-Script
@@ -2667,6 +2667,9 @@ Function Install-SOAPrerequisites {
         else {
             $Modules_OK | Format-Table Module,InstalledVersion,GalleryVersion,NewerAvailable
         }
+        if ($Modules_OK.GalleryVersion -match "\(\*\)") {
+            Write-Host "* Module has been limited to a lower version than what is available in PowerShell Gallery"
+        }
         
         If($Modules_Error.Count -gt 0) 
         {
@@ -2676,6 +2679,9 @@ Function Install-SOAPrerequisites {
             }
             else {
                 $Modules_Error | Format-Table Module,InstalledVersion,GalleryVersion,Conflict,NewerAvailable
+            }
+            if ($Modules_Error.GalleryVersion -match "\(\*\)") {
+                Write-Host "* Module has been limited to a lower version than what is available in PowerShell Gallery"
             }
 
             $CheckResults += New-Object -TypeName PSObject -Property @{
