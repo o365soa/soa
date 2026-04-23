@@ -212,7 +212,10 @@ function Remove-SOAAppSecret {
     $App = (Invoke-MgGraphRequest -Method GET -Uri "$GraphHost/v1.0/applications?`$filter=web/redirectUris/any(p:p eq 'https://security.optimization.assessment.local')&`$count=true" -Headers @{'ConsistencyLevel' = 'eventual'} -OutputType PSObject -ErrorAction SilentlyContinue).Value
 
     $secrets = $App.passwordCredentials
+    $i = 0
     foreach ($secret in $secrets) {
+        $i++
+        if ($i -gt 1) {Start-Sleep -Seconds 1} # Sleep to avoid concurrency errors on subsequent secrets
         # Suppress errors in case a secret no longer exists
         try {
             Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($App.appId)`')/removePassword" -body (ConvertTo-Json -InputObject @{ 'keyId' = $secret.keyId }) #| Out-Null
@@ -489,7 +492,7 @@ Function Install-EntraApp {
             'redirectUris' = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
         }
         'publicClient' = @{
-            'redirectUris' = @("https://login.microsoftonline.com/common/oauth2/nativeclient")
+            'redirectUris' = @("https://login.microsoftonline.com/common/oauth2/nativeclient","http://localhost")
         }
     }
 
@@ -501,6 +504,9 @@ Function Install-EntraApp {
     # Add service principal (enterprise app) as owner of its app registration
     $appSp = Get-SOAAppServicePrincipal -EntraApp $EntraApp
     if ($appSp) {
+
+        Hide-SOAApp -EntraApp $EntraApp
+
         if (Add-SOAAppOwner -NewOwnerObjectId $appSp.Id -EntraApp $EntraApp) {
             $script:appSelfOwner = $true
         } else {
@@ -1162,6 +1168,10 @@ Function Test-Connections {
     #>
     $connectToGraph = $false
     $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
+        # Force EXO module to be loaded before the Graph SDK to avoid conflicts in authentication libraries
+        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
+    }
     # Teams and SPO connections are dependent on Graph connection to determine Teams service plans and to get initial domain
     if ($Bypass -notcontains 'Teams' -or $Bypass -notcontains 'SPO' ) {
         if ($Bypass -contains 'Graph') {
@@ -1248,9 +1258,6 @@ Function Test-Connections {
         SCC
     
     #>
-    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
-        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
-    }
 
     If($Bypass -notcontains "SCC") {
         # Reset vars
@@ -1809,7 +1816,7 @@ function Get-SOAEntraApp {
         }
 
         # Check if public client URI is set
-        $pcRUrl = @('https://login.microsoftonline.com/common/oauth2/nativeclient')
+        $pcRUrl = @('https://login.microsoftonline.com/common/oauth2/nativeclient','http://localhost')
         if ($EntraApp.PublicClient.RedirectUris -notcontains $pcRUrl) {
             if ($DoNotRemediate -eq $false){
                 # Set as public client to be able to collect from Dynamics with delegated scope
@@ -1894,6 +1901,18 @@ function Add-SOAAppOwner {
     Write-Verbose "$(Get-Date) Adding Microsoft Entra application as owner of its app registration..."
     Invoke-MgGraphRequest -Method POST -Uri "$GraphHost/v1.0/applications(appId=`'$($EntraApp.AppId)`')/owners/`$ref" -Body $params
     if ($?) {return $true} else {return $false}
+}
+
+function Hide-SOAApp {
+    param (
+        $EntraApp
+    )
+
+    $tags = @("HideApp")
+
+    Write-Verbose "$(Get-Date) Hiding the service principal to not be visible to users..."
+    Invoke-MgGraphRequest -Method PATCH -Uri "$GraphHost/v1.0/servicePrincipals(appId=`'$($EntraApp.AppId)`')" -Body @{ tags = $tags }
+
 }
 
 Function Test-SOAApplication
@@ -2518,7 +2537,8 @@ Function Install-SOAPrerequisites {
 
             # Check if redirect URIs not set for existing app because DoNotRemediate is True. Needs to be evaluated after switching to Application permissions for scenarios where Delegated is not used.
             $webRUri = @("https://security.optimization.assessment.local","https://o365soa.github.io/soa/")
-            if (($EntraApp.PublicClient.RedirectUris -notcontains 'https://login.microsoftonline.com/common/oauth2/nativeclient' -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
+            $pcRUri = @("https://login.microsoftonline.com/common/oauth2/nativeclient","http://localhost")
+            if (((Compare-Object -ReferenceObject $EntraApp.PublicClient.RedirectUris -DifferenceObject $pcRUri) -or (Compare-Object -ReferenceObject $EntraApp.Web.RedirectUris -DifferenceObject $webRUri)) -and $DoNotRemediate) {
                 # Fail the Entra app check
                 $CheckResults += New-Object -Type PSObject -Property @{
                     Check="Entra Application"
