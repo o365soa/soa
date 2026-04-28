@@ -1258,10 +1258,11 @@ Function Test-Connections {
         }
         
         # Check for WAM error if not connected
-        if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") -and $connectResponse.Exception.Message -like "*Unknown Status: Unexpected*") {
-            Write-Warning -Message "$(Get-Date) Possible Web Authentication Manager (WAM) error occurred. Trying again without WAM."
+        if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") -and ($connectResponse.Exception.Message -like "*Unknown Status: Unexpected*" -or $connectResponse.Exception.Message -like "*window handle must be configured*")) {
+            Write-Warning -Message "$(Get-Date) Possible Web Account Manager (WAM) error occurred. Trying again without WAM."
             $sccWamDisabled = $true
             $connectResponse = Connect-ToSCC -NoWAM:$true
+            $connectComment = "Retried without WAM"
         }
 
         if ((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*protection.o*" -or $_.ConnectionUri -like "*protection.partner.o*"}).State -eq "Connected") {
@@ -1285,6 +1286,7 @@ Function Test-Connections {
             Name="SCC"
             Connected=$Connect
             ConnectErrors=$connectionError
+            ConnectComment=$connectComment
             TestCommand=$Command
             TestCommandErrors=$CommandError.Exception.Message
         }
@@ -1305,9 +1307,10 @@ Function Test-Connections {
         } else {
             $connectResponse = Connect-ToExchange -NoWAM:$false
             # Check for WAM error if not connected
-            if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") -and $connectResponse.Exception.Message -like "*Unknown Status: Unexpected*") {
-                Write-Warning -Message "$(Get-Date) Possible Web Authentication Manager (WAM) error occurred. Trying again without WAM."
+            if (-not((Get-ConnectionInformation | Where-Object {$_.ConnectionUri -like "*outlook.office*" -or $_.ConnectionUri -like "*webmail.apps.mil*" -or $_.ConnectionUri -like "*partner.outlook.cn*"}).TokenStatus -eq "Active") -and ($connectResponse.Exception.Message -like "*Unknown Status: Unexpected*" -or $connectResponse.Exception.Message -like "*window handle must be configured*")) {
+                Write-Warning -Message "$(Get-Date) Possible Web Account Manager (WAM) error occurred. Trying again without WAM."
                 $connectResponse = Connect-ToExchange -NoWAM:$true
+                $connectComment = "Retried without WAM"
             }
         }
         
@@ -1332,6 +1335,7 @@ Function Test-Connections {
             Name="Exchange"
             Connected=$Connect
             ConnectErrors=$ConnectError
+            ConnectComment=$connectComment
             TestCommand=$Command
             TestCommandErrors=$CommandError.Exception.Message
         }
@@ -2719,8 +2723,8 @@ Function Install-SOAPrerequisites {
         Results=$CheckResults
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
-        ConnectionsOK=($Connections_OK | Select-Object -Property Name,Connected,ConnectErrors,TestCommand,TestCommandErrors)
-        ConnectionsError=($Connections_Error | Select-Object -Property Name,Connected,ConnectErrors,TestCommand,TestCommandErrors)
+        ConnectionsOK=($Connections_OK | Select-Object -Property Name,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
+        ConnectionsError=($Connections_Error | Select-Object -Property Name,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
     } | ConvertTo-Json | Out-File SOA-PreCheck.json
 
     Write-Host "$(Get-Date) Output saved to SOA-PreCheck.json which should be sent to the engineer who will be performing the assessment."
