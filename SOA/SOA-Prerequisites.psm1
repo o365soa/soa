@@ -1412,7 +1412,8 @@ Function Test-Connections {
         if ($TeamsLicensed -eq $true) {
             Import-PSModule -ModuleName MicrosoftTeams -Implicit:$UseImplicitLoading
             # Reset vars
-            $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
+            $Connect = $False; $Command = $False; $CommandError = $Null
+            Remove-Variable -Name ConnectError -ErrorAction SilentlyContinue
 
             Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
             # Although the connection cmdlet supports providing an account ID, if used it will force the user to [re-]authenticate rather than presenting the account picker
