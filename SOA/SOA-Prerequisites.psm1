@@ -1245,6 +1245,7 @@ Function Test-Connections {
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="GraphSDK"
+            Version=((Get-Module -Name Microsoft.Graph.Authentication) | Select-Object -First 1).Version.ToString()
             Connected=$Connect
             ConnectErrors=$ConnectError.Exception.Message
             TestCommand=$Command
@@ -1298,6 +1299,7 @@ Function Test-Connections {
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="SCC"
+            Version=((Get-Module -Name ExchangeOnlineManagement) | Select-Object -First 1).Version.ToString()
             Connected=$Connect
             ConnectErrors=$connectionError
             ConnectComment=$connectComment
@@ -1347,6 +1349,7 @@ Function Test-Connections {
     
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="Exchange"
+            Version=((Get-Module -Name ExchangeOnlineManagement) | Select-Object -First 1).Version.ToString()
             Connected=$Connect
             ConnectErrors=$ConnectError
             ConnectComment=$connectComment
@@ -1389,6 +1392,7 @@ Function Test-Connections {
         
             $Connections += New-Object -TypeName PSObject -Property @{
                 Name="SPO"
+                Version=((Get-Module -Name Microsoft.Online.SharePoint.PowerShell) | Select-Object -First 1).Version.ToString()
                 Connected=$Connect
                 ConnectErrors=$ConnectError.Exception.Message
                 TestCommand=$Command
@@ -1445,6 +1449,7 @@ Function Test-Connections {
 
             $Connections += New-Object -TypeName PSObject -Property @{
                 Name="Teams"
+                Version=((Get-Module -Name MicrosoftTeams) | Select-Object -First 1).Version.ToString()
                 Connected=$Connect
                 ConnectErrors=$ConnectError.Exception.Message
                 TestCommand=$Command
@@ -1508,6 +1513,7 @@ Function Test-Connections {
 
         $Connections += New-Object -TypeName PSObject -Property @{
             Name="PowerApps"
+            Version=((Get-Module -Name Microsoft.PowerApps.Administration.PowerShell) | Select-Object -First 1).Version.ToString()
             Connected=$Connect
             ConnectErrors=$ConnectError.Exception.Message
             TestCommand=$Command
@@ -2191,26 +2197,22 @@ Function Install-SOAPrerequisites {
 
     #>
     Write-Host ""
-    Write-Host "This script is used to install and validate the prerequisites for running the data collection"
-    Write-Host "for one of the Microsoft 365 security assessments offered via Microsoft Services."
-    Write-Host "At the conclusion of this script running successfully, a file named SOA-PreCheck.json will be created."
-    Write-Host "This file should be sent to the engineer who will be delivering the assessment."
-    Write-Host ""
-    Write-Host "This script MUST be run on the workstation that will be used to perform the data collection for the assessment."
-    Write-Host ""
+    Write-Host "* This script is used to install and validate the prerequisites for running the data collection for one of the Microsoft 365 security assessments offered via Microsoft Services."
+    Write-Host "* When the script concludes, a file named SOA-PreCheck.json will be created in the current folder. This file should be sent to the engineer who will be delivering the assessment."
+    Write-Host "* This script MUST be run on the machine that will be used to perform the data collection for the assessment."
 
     if ($DoNotRemediate -eq $false -and $ConnectOnly -eq $false) {
         Write-Important
-        Write-Host "This script makes changes on this machine and in your Microsoft 365 tenant. Per the parameters used, the following will occur:" -ForegroundColor Green
+        Write-Host "This script makes changes on this machine and in your Microsoft 365 tenant. Based on the used parameters, the following will occur:" -ForegroundColor Green
         if ($ModuleCheck) {
-            Write-Host "- Install the latest version of PowerShell modules on this machine that are required for the assessment" -ForegroundColor Green
+            Write-Host "- Install the latest version of each PowerShell module that is required for the assessment" -ForegroundColor Green
         }
         if ($EntraAppCheck) {
-            Write-Host "- Create a Microsoft Entra enterprise application in your tenant:" -ForegroundColor Green
-            Write-Host "   -- The application name is 'Microsoft Security Assessment'" -ForegroundColor Green
+            Write-Host "- Create a Microsoft Entra app registration in your tenant:" -ForegroundColor Green
+            Write-Host "   -- The application name will be `"Microsoft 365 Security Assessment`"" -ForegroundColor Green
             Write-Host "   -- The application will not be visible to end users" -ForegroundColor Green
-            Write-Host "   -- The application secret (password) will not be stored, is randomly generated, and is removed when the prerequisites installation is complete." -ForegroundColor Green
-            Write-Host "      (The application will not work without a secret. Do NOT remove the application until the conclusion of the engagement.)" -ForegroundColor Green
+            Write-Host "   -- The application's client secret is a randomly generated string, will not be stored, and is removed at the conclusion of the script" -ForegroundColor Green
+            Write-Host "      (Do NOT remove the application until the after the data collection on the first day of the engagement.)" -ForegroundColor Green
         }
         Write-Host ""
 
@@ -2218,13 +2220,14 @@ Function Install-SOAPrerequisites {
             if ($EntraAppOnly) {
                 $rhInput = Read-Host "Do you agree with the changes above (y/n)"
             } else {
-                $rhInput = Read-Host "Is this script being run on the machine that will be used to pertform the data collection, and do you agree with the changes above (y/n)"
+                $rhInput = Read-Host "Is this script being run on the machine that will be used to perform the data collection, and do you agree with the changes above (y/n)"
             }
             if($rhInput -eq "n") {
                 Exit-Script
+                return
             } elseif($rhInput -eq "y") {
                 Write-Host ""
-                break;
+                break
             }
         }
     }
@@ -2252,9 +2255,12 @@ Function Install-SOAPrerequisites {
     }
     if ($moduleResponse.StatusCode -eq 200) {
         $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
+        $gitHubDownloadSuccess = $true
     }
     if ($NoModuleLimitCheck -eq $false -and -not $script:moduleVersions) {
-        Write-Warning -Message "Unable to download module version information from GitHub.io. Any version limits will not be enforced."
+        Write-Warning -Message "An error occurred downloading module version information from GitHub.io. Any version limits will not be enforced."
+        pause
+        $gitHubDownloadSuccess = $false
     }
 
     <# 
@@ -2749,10 +2755,11 @@ Function Install-SOAPrerequisites {
         UserCount=$AppTest.UserCount
         UserCountNote=$AppTest.CountNote
         Results=$CheckResults
+        GitHubAccess=$gitHubDownloadSuccess
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
-        ConnectionsOK=($Connections_OK | Select-Object -Property Name,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
-        ConnectionsError=($Connections_Error | Select-Object -Property Name,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
+        ConnectionsOK=($Connections_OK | Select-Object -Property Name,Version,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
+        ConnectionsError=($Connections_Error | Select-Object -Property Name,Version,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
     } | ConvertTo-Json | Out-File SOA-PreCheck.json
 
     Write-Host "$(Get-Date) Output saved to SOA-PreCheck.json which should be sent to the engineer who will be performing the assessment."
