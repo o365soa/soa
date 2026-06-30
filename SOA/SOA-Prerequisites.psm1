@@ -1442,7 +1442,7 @@ Function Test-Connections {
             # DisableWAM parameter not available prior to version 7.8.1
             if (($sccWAMDisabled -or $DisableWAM) -and $teamsModuleVersion -ge [version]"7.8.1") {
                 Write-verbose "Disabling WAM for connection to Microsoft Teams"
-                $teamsConnectArguments.Add("DisableWAM", $DisableWAM)
+                $teamsConnectArguments.Add("DisableWAM", $true)
             }
             # Reset vars
             $Connect = $False; $Command = $False; $CommandError = $Null
