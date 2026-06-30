@@ -1415,36 +1415,54 @@ Function Test-Connections {
         }
         if ($TeamsLicensed -eq $true) {
             Import-PSModule -ModuleName MicrosoftTeams -Implicit:$UseImplicitLoading
+            # Multiple loaded versions are listed in reverse order of precedence
+            $teamsModuleVersion = (Get-Module -Name MicrosoftTeams | Select-Object -Last 1).Version
+            
+            # Regional connection parameters
+            switch ($CloudEnvironment) {
+                USGovGCCHigh {
+                    $teamsConnectArguments = @{
+                        TeamsEnvironmentName = "TeamsGCCH"
+                    }
+                }
+                USGovDoD {
+                    $teamsConnectArguments = @{
+                        TeamsEnvironmentName = "TeamsDOD"
+                    }
+                }
+                China {
+                    $teamsConnectArguments = @{
+                        TeamsEnvironmentName = "TeamsChina"
+                    }
+                }
+                default {
+                    $teamsConnectArguments = @{}
+                }
+            }
+            # DisableWAM parameter not available prior to version 7.8.1
+            if (($sccWAMDisabled -or $DisableWAM) -and $teamsModuleVersion -ge [version]"7.8.1") {
+                Write-verbose "Disabling WAM for connection to Microsoft Teams"
+                $teamsConnectArguments.Add("DisableWAM", $DisableWAM)
+            }
             # Reset vars
             $Connect = $False; $Command = $False; $CommandError = $Null
             Remove-Variable -Name ConnectError -ErrorAction SilentlyContinue
 
             Write-Host "$(Get-Date) Connecting to Microsoft Teams..."
-            # Although the connection cmdlet supports providing an account ID, if used it will force the user to [re-]authenticate rather than presenting the account picker
-            switch ($CloudEnvironment) {
-                "Commercial"    {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovGCC"      {try {Connect-MicrosoftTeams} catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovGCCHigh"  {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsGCCH } catch {New-Variable -Name ConnectError -Value $true}}
-                "USGovDoD"      {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsDOD } catch {New-Variable -Name ConnectError -Value $true}}
-                "China"         {try {Connect-MicrosoftTeams -TeamsEnvironmentName TeamsChina } catch {New-Variable -Name ConnectError -Value $true}}
+            try {
+                Connect-MicrosoftTeams @teamsConnectArguments
+            } catch {
+                New-Variable -Name ConnectError -Value $true
             }
 
             # If no error, try test command
             if ($ConnectError) {
-                $Connect = $False
-                $Command = $False
-            }
-            else { 
+                $Connect = $false
+                $Command = $false
+            } else { 
                 $Connect = $true
                 # Cmdlet that can be run by anyone
-                if (Get-CsOnlineUser -ResultSize 1) {
-                # Cmdlet that can be run by admin
-                #if (Get-CsTenantFederationConfiguration) {
-                    $Command = $True
-                } 
-                else {
-                    $Command = $False
-                }
+                if (Get-CsOnlineUser -ResultSize 1) { $Command = $true } else { $Command = $false }
             }
 
             $Connections += New-Object -TypeName PSObject -Property @{
