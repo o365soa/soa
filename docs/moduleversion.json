@@ -5,7 +5,7 @@
     },
     {
         "ModuleName": "MicrosoftTeams",
-        "MaximumVersion": ""
+        "MaximumVersion": "7.8.0"
     },
     {
         "ModuleName": "ExchangeOnlineManagement",
