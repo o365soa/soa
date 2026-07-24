@@ -19,9 +19,12 @@ The latest version of the following PowerShell modules is installed:
 * Active Directory
 
 > [!NOTE]
+> Due to compatibility issues, a specific version of one or more modules may be needed, which the prerequisites installation script will install.
+
+> [!NOTE]
 > For SharePoint Online, if a non-PowerShell Gallery version of the module is installed, it is removed from the PS Module Path to prevent conflicts.
 
-An application, named "Microsoft Security Assessment", is also registered (created) in your tenant. Details are provided below.
+An application named "Microsoft 365 Security Assessment" is also registered (created) in your tenant. Details are provided below.
 
 ## Collection machine
 The prerequisites need to be installed on the system that will be used for data collection. It can be any workstation or server, physical or virtual, that can connect via PowerShell to Microsoft Graph, Exchange Online, Security & Compliance Center, SharePoint Online, Microsoft Teams, and Power Platform. It does not need to be AD- or Microsoft Entra-joined unless you have Conditional Access policies requiring it for any of these connections.
