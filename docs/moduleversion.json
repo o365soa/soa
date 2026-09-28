@@ -1,7 +1,7 @@
 [
     {
         "ModuleName": "Microsoft.Online.SharePoint.PowerShell",
-        "MaximumVersion": ""
+        "MaximumVersion": "16.0.27612.12000"
     },
     {
         "ModuleName": "MicrosoftTeams",
