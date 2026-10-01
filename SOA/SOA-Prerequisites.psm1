@@ -1160,10 +1160,6 @@ Function Test-Connections {
     #>
     $connectToGraph = $false
     $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
-    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
-        # Force EXO module to be loaded before the Graph SDK to avoid conflicts in authentication libraries
-        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
-    }
     # Teams and SPO connections are dependent on Graph connection to determine Teams service plans and to get initial domain
     if ($Bypass -notcontains 'Teams' -or $Bypass -notcontains 'SPO' ) {
         if ($Bypass -contains 'Graph') {
@@ -1174,8 +1170,17 @@ Function Test-Connections {
     if ($Bypass -notcontains 'Graph') {
         $connectToGraph = $true
     }
+    # Import the Graph SDK before ExchangeOnlineManagement. Both modules ship their own copies of
+    # Azure.Identity, System.Text.Json and MSAL, and whichever is imported first wins the assembly
+    # load for the whole process. With EXO first, Connect-MgGraph fails on Windows PowerShell 5.1
+    # with a TypeInitializationException.
     if ($connectToGraph -eq $true) {
         Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
+    }
+    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
+        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
+    }
+    if ($connectToGraph -eq $true) {
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
