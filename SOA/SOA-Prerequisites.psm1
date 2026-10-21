@@ -2004,7 +2004,8 @@ Function Invoke-SOAVersionCheck
     $SOAGallery = Find-Module SOA
     $SOAModule = Get-Module SOA
 
-    If($SOAGallery.Version -gt $SOAModule.Version) 
+    # Find-Module returns the version as a string; compared as strings, 3.10.0 would sort below 3.9.2
+    If([version]$SOAGallery.Version -gt $SOAModule.Version) 
     {
         $NewerAvailable = $True
     }
