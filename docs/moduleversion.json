@@ -18,5 +18,40 @@
     {
         "ModuleName": "Microsoft.Graph.Authentication",
         "MaximumVersion": "2.33.0"
+    },
+    {
+        "SchemaVersion": 2,
+        "Modules": [
+            {
+                "ModuleName": "Microsoft.Online.SharePoint.PowerShell",
+                "MaximumVersion": "16.0.27612.12000",
+                "TestedOn": "2026-10-12",
+                "Reason": "16.0.27709.12000 fails with AADSTS50011 (redirect URI) when it connects after other modules. Verified with Graph 2.40.0, EXO 3.10.1 and Teams 7.8.0."
+            },
+            {
+                "ModuleName": "MicrosoftTeams",
+                "MaximumVersion": "7.8.0",
+                "TestedOn": "2026-10-07",
+                "Reason": "7.9.0 was reported to fail with AADSTS50011; not reproduced. Verified with Graph 2.40.0 and EXO 3.10.1."
+            },
+            {
+                "ModuleName": "ExchangeOnlineManagement",
+                "MaximumVersion": "3.10.1",
+                "TestedOn": "2026-10-07",
+                "Reason": "Loads after Graph 2.40.0 (Import-SOARequiredModules). Verified with Graph 2.40.0 and Teams 7.8.0."
+            },
+            {
+                "ModuleName": "Microsoft.PowerApps.Administration.PowerShell",
+                "MaximumVersion": "",
+                "TestedOn": "",
+                "Reason": ""
+            },
+            {
+                "ModuleName": "Microsoft.Graph.Authentication",
+                "MaximumVersion": "2.40.0",
+                "TestedOn": "2026-10-07",
+                "Reason": "2.41.x on Windows PowerShell 5.1: with EXO 3.10.1 loaded first the credential build fails; Graph first is not verified."
+            }
+        ]
     }
 ]

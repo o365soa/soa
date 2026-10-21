@@ -90,6 +90,10 @@ Microsoft globally registered applications, including the Graph PowerShell SDK, 
 1. Under **Redirect URI**, click the drop-down for "Select a platform" and select *Public client/native (mobile & desktop)*, then enter `http://localhost`.
 1. Click the **Register** button.
 1. In the application's **Overview** section, copy the "Application (client) ID" value, which will need to be provided using the `-GraphClientId` parameter when running `Install-SOAPrerequisites` and when running the collection script.
+1. In the application's **Authentication** section, under **Mobile and desktop applications**, add the custom redirect URI `ms-appx-web://Microsoft.AAD.BrokerPlugin/<Application (client) ID>`, using the value copied in the previous step. The SDK signs in through Windows Web Account Manager (WAM) by default, which requires this redirect URI.
+
+> [!NOTE]
+> If the redirect URI cannot be added or WAM sign-in fails, WAM can be turned off for the SDK by running `Set-MgGraphOption -DisableLoginByWAM $true`. The setting applies to the Windows user profile and persists until it is reverted with `Set-MgGraphOption -DisableLoginByWAM $false`. It takes effect only when a custom client ID is used, such as the app registered here.
 
 ### Active Directory module
 
