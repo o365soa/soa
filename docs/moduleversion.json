@@ -5,15 +5,11 @@
     },
     {
         "ModuleName": "MicrosoftTeams",
-        "MaximumVersion": "7.8.0",
-        "TestedOn": "2026-10-07",
-        "Reason": "7.9.0 and later fail with AADSTS50011 in some tenants. 7.8.0 is the newest version verified against Graph and EXO."
+        "MaximumVersion": "7.8.0"
     },
     {
         "ModuleName": "ExchangeOnlineManagement",
-        "MaximumVersion": "3.10.1",
-        "TestedOn": "2026-10-07",
-        "Reason": "Newest published version; verified with Graph 2.40.0 and Teams 7.8.0/8.0.0. Raise after re-running the matrix."
+        "MaximumVersion": "3.9.2"
     },
     {
         "ModuleName": "Microsoft.PowerApps.Administration.PowerShell",
@@ -21,8 +17,6 @@
     },
     {
         "ModuleName": "Microsoft.Graph.Authentication",
-        "MaximumVersion": "2.40.0",
-        "TestedOn": "2026-10-07",
-        "Reason": "2.41.x ships MSAL 4.90.0 while EXO 3.10.1 binds against 4.83.1, and requires System.Text.Json 10 (msgraph-sdk-powershell#3810). Raise when both realign."
+        "MaximumVersion": "2.33.0"
     }
 ]
