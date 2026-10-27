@@ -44,6 +44,8 @@ function Exit-Script {
     Remove-Variable -Name subscribedSku -Scope Script -ErrorAction SilentlyContinue
     Remove-Variable -Name *Licensed -Scope Script -ErrorAction SilentlyContinue
     Remove-Variable -Name ModuleVersions -Scope Script -ErrorAction SilentlyContinue
+    Remove-Variable -Name ModuleVersionsRaw -Scope Script -ErrorAction SilentlyContinue
+    Remove-Variable -Name ImportOrder -Scope Script -ErrorAction SilentlyContinue
     Stop-Transcript
 }
 
@@ -1005,12 +1007,19 @@ Function Invoke-SOAModuleCheck {
 function Import-PSModule {
     param (
         $ModuleName,
-        [switch]$Implicit
+        [switch]$Implicit,
+        [string]$MaximumVersion,
+        [switch]$Global
         )
 
     if ($Implicit -eq $false) {
-        # Evaluate the ModuleVersion JSON file to determine if any versions should be excluded
-        $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
+        # Evaluate the ModuleVersion JSON file to determine if any versions should be excluded,
+        # unless the caller supplies the limit (the collection script does not set $script:ModuleVersions)
+        if ($PSBoundParameters.ContainsKey('MaximumVersion')) {
+            $MaxVersion = $MaximumVersion
+        } else {
+            $MaxVersion = ($script:ModuleVersions | Where-Object {$_.ModuleName -eq $ModuleName}).MaximumVersion
+        }
 
         if ($MaxVersion) {
             Write-Verbose "A MaximumVersion of $MaxVersion was specified for $ModuleName. Only this version will be imported."
@@ -1031,7 +1040,7 @@ function Import-PSModule {
             $PAPath = (Get-Module -Name $ModuleName -ListAvailable | Sort-Object Version -Descending | Select-Object -First 1).ModuleBase
             Import-Module (Join-Path -Path $PAPath "Microsoft.PowerApps.AuthModule.psm1") -WarningAction:SilentlyContinue -Force
         }
-        Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue
+        Import-Module -Name $ModuleName -RequiredVersion $highestVersion -ErrorVariable loadError -Force -WarningAction SilentlyContinue -Global:$Global
         if ($loadError) {
             Write-Error -Message "Error loading module $ModuleName."
         }
@@ -1039,6 +1048,204 @@ function Import-PSModule {
         if ($loadedModule) {
             Write-Verbose -Message "Module $ModuleName version $($loadedModule.Version.ToString()) is loaded."
         }
+    }
+}
+
+function Get-SOAModuleLimits {
+    <#
+        Returns the module limits this version of the module uses from the contents of moduleversion.json.
+        The file is an array: the top-level entries are the schema version 1 limits read by older code,
+        and an optional trailing element with SchemaVersion 2 holds the complete list for newer code.
+    #>
+    param (
+        $ModuleVersions
+    )
+
+    # No limits were downloaded or the limit check was skipped
+    if (-not $ModuleVersions) {
+        return
+    }
+    # The SchemaVersion 2 element has no ModuleName, so older code ignores it
+    $v2 = $ModuleVersions | Where-Object {$_.PSObject.Properties['SchemaVersion'] -and $_.SchemaVersion -eq 2} | Select-Object -First 1
+    if ($v2 -and $v2.Modules) {
+        return $v2.Modules
+    }
+    return $ModuleVersions
+}
+
+function Get-GraphWamDisabled {
+    <#
+        Read-only. Graph SDK 2.40 reports DisableLoginByWAM (WAM on by default); 2.33 reports EnableWAMForMSGraph (WAM off by default).
+        Only inspects a loaded module: looking up the cmdlet would auto-import the highest installed version, which may exceed the limit.
+    #>
+    if (-not (Get-Module -Name Microsoft.Graph.Authentication)) {
+        return $null
+    }
+    if (-not (Get-Command -Name Get-MgGraphOption -ErrorAction SilentlyContinue)) {
+        return $null
+    }
+    $option = Get-MgGraphOption -ErrorAction SilentlyContinue
+    if (-not $option) {
+        return $null
+    }
+    if ($option.PSObject.Properties['DisableLoginByWAM']) {
+        return [bool]$option.DisableLoginByWAM
+    }
+    if ($option.PSObject.Properties['EnableWAMForMSGraph']) {
+        return -not [bool]$option.EnableWAMForMSGraph
+    }
+    return $null
+}
+
+function Select-SOAModulePair {
+    <#
+        Chooses the versions of ExchangeOnlineManagement and Microsoft.Graph.Authentication to load and the order to load them in.
+
+        Whichever of the two loads first fixes the shared assemblies (MSAL, Azure.Core, System.Text.Json) for the whole process,
+        and only some combinations work. Each schema in moduleversion.json describes a tested combination, so both versions are
+        taken from the same schema: schema 2 first, then schema 1. Older versions stay installed unless prerequisites remove them,
+        so taking the highest version of each module independently could combine EXO from one schema with Graph from the other.
+
+        Returns $null when no schema can be satisfied by the installed (and already loaded) versions.
+    #>
+    param (
+        $ModuleVersions,
+        [string[]]$ModuleName = @('ExchangeOnlineManagement','Microsoft.Graph.Authentication')
+    )
+
+    $pairNames = @('ExchangeOnlineManagement','Microsoft.Graph.Authentication')
+
+    $schemas = @()
+    $v1Limits = @()
+    $v2Element = $null
+    if ($ModuleVersions) {
+        $v1Limits = @($ModuleVersions | Where-Object {$_.PSObject.Properties['ModuleName']})
+        $v2Element = $ModuleVersions | Where-Object {$_.PSObject.Properties['SchemaVersion'] -and $_.SchemaVersion -eq 2} | Select-Object -First 1
+    }
+    if ($v2Element -and $v2Element.Modules) {
+        $schemas += [pscustomobject]@{Name = '2'; Limits = @($v2Element.Modules); Floor = $v1Limits}
+    }
+    if ($v1Limits.Count -gt 0) {
+        $schemas += [pscustomobject]@{Name = '1'; Limits = $v1Limits; Floor = @()}
+    }
+    if ($schemas.Count -eq 0) {
+        $schemas += [pscustomobject]@{Name = 'None'; Limits = @(); Floor = @()}
+    }
+
+    foreach ($schema in $schemas) {
+        $selected = @{}
+        foreach ($name in $pairNames) {
+            $loaded = Get-Module -Name $name | Select-Object -Last 1
+            # A module that is neither requested nor loaded does not constrain the choice
+            if ($ModuleName -notcontains $name -and -not $loaded) {
+                continue
+            }
+            $limit = ($schema.Limits | Where-Object {$_.ModuleName -eq $name}).MaximumVersion
+            $floor = ($schema.Floor | Where-Object {$_.ModuleName -eq $name}).MaximumVersion
+            # Schema 2 versions must be newer than schema 1 wherever the limits differ, otherwise the pair would mix schemas
+            if ($floor -and $limit -and [version]$floor -ge [version]$limit) {
+                $floor = $null
+            }
+            $candidates = Get-Module -Name $name -ListAvailable | Where-Object {
+                (-not $limit -or $_.Version -le [version]$limit) -and
+                (-not $floor -or $_.Version -gt [version]$floor) -and
+                (-not $loaded -or $_.Version -eq $loaded.Version)
+            }
+            $best = $candidates | Sort-Object -Property Version -Descending | Select-Object -First 1
+            if (-not $best) {
+                $selected = $null
+                break
+            }
+            $selected[$name] = $best.Version
+        }
+        if ($null -eq $selected) {
+            continue
+        }
+
+        # EXO 3.10.0 and later must load after the Graph SDK; earlier versions must load before it
+        if ($selected['ExchangeOnlineManagement'] -and $selected['ExchangeOnlineManagement'] -ge [version]'3.10.0') {
+            $order = @('Microsoft.Graph.Authentication','ExchangeOnlineManagement')
+        } else {
+            $order = @('ExchangeOnlineManagement','Microsoft.Graph.Authentication')
+        }
+        $order = @($order | Where-Object {$selected.ContainsKey($_)})
+
+        # A module that is already loaded cannot be preceded by one that is not
+        $conflict = $null
+        for ($i = 1; $i -lt $order.Count; $i++) {
+            if ((Get-Module -Name $order[$i]) -and -not (Get-Module -Name $order[$i - 1])) {
+                $conflict = "$($order[$i]) is already loaded, but $($order[$i - 1]) $($selected[$order[$i - 1]]) must be loaded before it. Open a new PowerShell window."
+            }
+        }
+
+        return [pscustomobject]@{
+            Schema = $schema.Name
+            Order = @($order | Where-Object {$ModuleName -contains $_})
+            Versions = $selected
+            Conflict = $conflict
+        }
+    }
+    return $null
+}
+
+function Import-SOARequiredModules {
+    <#
+        .SYNOPSIS
+            Imports ExchangeOnlineManagement and Microsoft.Graph.Authentication in versions and an order that avoid shared assembly conflicts.
+        .DESCRIPTION
+            Used by the prerequisites and by the collection script. The versions are chosen from one schema of moduleversion.json
+            (see Select-SOAModulePair), and the order from the EXO version chosen. Returns an object with Success, Schema,
+            ImportOrder, Modules (name and loaded version) and Message. When Success is false nothing more should be loaded.
+        .PARAMETER ModuleVersions
+            The contents of moduleversion.json as downloaded (all schemas), already converted from JSON. $null when no limits apply.
+        .PARAMETER ModuleName
+            The modules to import. Defaults to both.
+        .PARAMETER Implicit
+            Imports nothing because the modules load on first use; limits and order are then not enforced.
+    #>
+    [CmdletBinding()]
+    param (
+        $ModuleVersions,
+        [ValidateSet('ExchangeOnlineManagement','Microsoft.Graph.Authentication')][string[]]$ModuleName = @('ExchangeOnlineManagement','Microsoft.Graph.Authentication'),
+        [switch]$Implicit
+    )
+
+    if ($Implicit) {
+        Write-Warning -Message "Modules are loaded implicitly, so version limits and the import order of ExchangeOnlineManagement and Microsoft.Graph.Authentication are not enforced."
+        return [pscustomobject]@{Success = $true; Schema = $null; ImportOrder = $null; Modules = @(); Message = $null}
+    }
+
+    $pair = Select-SOAModulePair -ModuleVersions $ModuleVersions -ModuleName $ModuleName
+    if (-not $pair) {
+        $message = "No supported combination of $($ModuleName -join ' and ') is installed. Run Install-SOAPrerequisites -ModulesOnly to install the supported versions. If either module is already loaded in this PowerShell window, open a new window."
+        return [pscustomobject]@{Success = $false; Schema = $null; ImportOrder = $null; Modules = @(); Message = $message}
+    }
+    if ($pair.Conflict) {
+        return [pscustomobject]@{Success = $false; Schema = $pair.Schema; ImportOrder = $null; Modules = @(); Message = $pair.Conflict}
+    }
+
+    Write-Verbose "Import-SOARequiredModules: schema $($pair.Schema); import order: $(($pair.Order | ForEach-Object {"$_ $($pair.Versions[$_])"}) -join ', ')"
+    foreach ($name in $pair.Order) {
+        # Global, so that a caller outside this module (the collection script) uses these versions instead of auto-loading the highest installed
+        Import-PSModule -ModuleName $name -MaximumVersion $pair.Versions[$name].ToString() -Global
+    }
+
+    $modules = @($pair.Order | ForEach-Object {
+        $loaded = Get-Module -Name $_ | Select-Object -Last 1
+        [pscustomobject]@{Name = $_; Version = if ($loaded) {$loaded.Version.ToString()} else {$null}}
+    })
+    $failed = @($modules | Where-Object {$_.Version -ne $pair.Versions[$_.Name].ToString()})
+    $message = $null
+    if ($failed.Count -gt 0) {
+        $message = "Could not load $(($failed | ForEach-Object {"$($_.Name) $($pair.Versions[$_.Name])"}) -join ' and '). Open a new PowerShell window and try again."
+    }
+
+    [pscustomobject]@{
+        Success = ($failed.Count -eq 0)
+        Schema = $pair.Schema
+        ImportOrder = $pair.Order
+        Modules = $modules
+        Message = $message
     }
 }
 
@@ -1145,7 +1352,8 @@ function Connect-ToExchange {
 Function Test-Connections {
     Param(
         $RPSProxySetting,
-        [string]$CloudEnvironment
+        [string]$CloudEnvironment,
+        [bool]$EntraAppCheck
     )
 
     $Connections = @()
@@ -1160,10 +1368,6 @@ Function Test-Connections {
     #>
     $connectToGraph = $false
     $Connect = $False; $ConnectError = $Null; $Command = $False; $CommandError = $Null
-    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
-        # Force EXO module to be loaded before the Graph SDK to avoid conflicts in authentication libraries
-        Import-PSModule -ModuleName ExchangeOnlineManagement -Implicit:$UseImplicitLoading
-    }
     # Teams and SPO connections are dependent on Graph connection to determine Teams service plans and to get initial domain
     if ($Bypass -notcontains 'Teams' -or $Bypass -notcontains 'SPO' ) {
         if ($Bypass -contains 'Graph') {
@@ -1174,8 +1378,26 @@ Function Test-Connections {
     if ($Bypass -notcontains 'Graph') {
         $connectToGraph = $true
     }
+    # ExchangeOnlineManagement and the Graph SDK ship their own copies of MSAL, Azure.Core and System.Text.Json,
+    # and whichever loads first fixes them for the whole process, so both are imported together, in the
+    # versions and order chosen by Import-SOARequiredModules.
+    # The Entra application check runs after this function and uses Graph, so Graph is needed even when
+    # no Graph connection is made here.
+    $modulesToImport = @()
+    if ($connectToGraph -eq $true -or $EntraAppCheck -eq $true) {
+        $modulesToImport += 'Microsoft.Graph.Authentication'
+    }
+    if ($Bypass -notcontains 'SCC' -or $Bypass -notcontains 'EXO') {
+        $modulesToImport += 'ExchangeOnlineManagement'
+    }
+    if ($modulesToImport.Count -gt 0) {
+        $importResult = Import-SOARequiredModules -ModuleVersions $script:ModuleVersionsRaw -ModuleName $modulesToImport -Implicit:$UseImplicitLoading
+        $script:ImportOrder = $importResult.ImportOrder
+        if ($importResult.Success -ne $true) {
+            Write-Error -Message $importResult.Message
+        }
+    }
     if ($connectToGraph -eq $true) {
-        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
@@ -1782,7 +2004,8 @@ Function Invoke-SOAVersionCheck
     $SOAGallery = Find-Module SOA
     $SOAModule = Get-Module SOA
 
-    If($SOAGallery.Version -gt $SOAModule.Version) 
+    # Find-Module returns the version as a string; compared as strings, 3.10.0 would sort below 3.9.2
+    If([version]$SOAGallery.Version -gt $SOAModule.Version) 
     {
         $NewerAvailable = $True
     }
@@ -2264,7 +2487,9 @@ Function Install-SOAPrerequisites {
         } catch {} 
     }
     if ($moduleResponse.StatusCode -eq 200) {
-        $script:moduleVersions = $moduleResponse.Content | ConvertFrom-Json
+        # Keep the full contents for Import-SOARequiredModules, which reads every schema; everything else uses the selected limits
+        $script:ModuleVersionsRaw = $moduleResponse.Content | ConvertFrom-Json
+        $script:moduleVersions = Get-SOAModuleLimits -ModuleVersions $script:ModuleVersionsRaw
         $gitHubDownloadSuccess = $true
     }
     if ($NoModuleLimitCheck -eq $false -and -not $script:moduleVersions) {
@@ -2407,7 +2632,7 @@ Function Install-SOAPrerequisites {
 
         # Proceed to testing connections
 
-        $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting -CloudEnvironment $CloudEnvironment)
+        $Connections = @(Test-Connections -RPSProxySetting $RPSProxySetting -CloudEnvironment $CloudEnvironment -EntraAppCheck $EntraAppCheck)
         
         $Connections_OK = @($Connections | Where-Object {$_.Connected -eq $True -and $_.TestCommand -eq $True})
         $Connections_Error = @($Connections | Where-Object {$_.Connected -eq $False -or $_.TestCommand -eq $False -or $Null -ne $_.OtherErrors})
@@ -2443,8 +2668,12 @@ Function Install-SOAPrerequisites {
             }
         }
 
-        # When EntraAppOnly is used, the Graph module may not be loaded or connected to Microsoft Graph
-        Import-PSModule -ModuleName Microsoft.Graph.Authentication -Implicit:$UseImplicitLoading
+        # When EntraAppOnly is used, the Graph module may not be loaded or connected to Microsoft Graph.
+        # If EXO is already loaded, the importer keeps Graph to a version that works with it.
+        $importResult = Import-SOARequiredModules -ModuleVersions $script:ModuleVersionsRaw -ModuleName 'Microsoft.Graph.Authentication' -Implicit:$UseImplicitLoading
+        if ($importResult.Success -ne $true) {
+            Write-Error -Message $importResult.Message
+        }
         switch ($CloudEnvironment) {
             "Commercial"   {$cloud = 'Global'}
             "USGovGCC"     {$cloud = 'Global'}
@@ -2767,6 +2996,8 @@ Function Install-SOAPrerequisites {
         UserCountNote=$AppTest.CountNote
         Results=$CheckResults
         GitHubAccess=$gitHubDownloadSuccess
+        ImportOrder=$script:ImportOrder
+        GraphWamDisabled=(Get-GraphWamDisabled)
         ModulesOK=$Modules_OK
         ModulesError=$Modules_Error
         ConnectionsOK=($Connections_OK | Select-Object -Property Name,Version,Connected,ConnectErrors,ConnectComment,TestCommand,TestCommandErrors)
