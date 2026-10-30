@@ -1106,7 +1106,8 @@ function Select-SOAModulePair {
         taken from the same schema: schema 2 first, then schema 1. Older versions stay installed unless prerequisites remove them,
         so taking the highest version of each module independently could combine EXO from one schema with Graph from the other.
 
-        Returns $null when no schema can be satisfied by the installed (and already loaded) versions.
+        Returns $null when no schema can be satisfied by the installed (and already loaded) versions. When an earlier schema was
+        skipped only because a different version of one of its modules is already loaded, SkippedBecauseLoaded names that module.
     #>
     param (
         $ModuleVersions,
@@ -1132,8 +1133,11 @@ function Select-SOAModulePair {
         $schemas += [pscustomobject]@{Name = 'None'; Limits = @(); Floor = @()}
     }
 
+    $skippedBecauseLoaded = $null
     foreach ($schema in $schemas) {
         $selected = @{}
+        $missing = $false
+        $blockedBy = $null
         foreach ($name in $pairNames) {
             $loaded = Get-Module -Name $name | Select-Object -Last 1
             # A module that is neither requested nor loaded does not constrain the choice
@@ -1146,19 +1150,25 @@ function Select-SOAModulePair {
             if ($floor -and $limit -and [version]$floor -ge [version]$limit) {
                 $floor = $null
             }
-            $candidates = Get-Module -Name $name -ListAvailable | Where-Object {
+            $installed = @(Get-Module -Name $name -ListAvailable | Where-Object {
                 (-not $limit -or $_.Version -le [version]$limit) -and
-                (-not $floor -or $_.Version -gt [version]$floor) -and
-                (-not $loaded -or $_.Version -eq $loaded.Version)
+                (-not $floor -or $_.Version -gt [version]$floor)
+            })
+            $best = $installed | Where-Object {-not $loaded -or $_.Version -eq $loaded.Version} |
+                Sort-Object -Property Version -Descending | Select-Object -First 1
+            if ($best) {
+                $selected[$name] = $best.Version
+            } elseif ($loaded -and $installed.Count -gt 0) {
+                $blockedBy = "$name $($loaded.Version)"
+            } else {
+                $missing = $true
             }
-            $best = $candidates | Sort-Object -Property Version -Descending | Select-Object -First 1
-            if (-not $best) {
-                $selected = $null
-                break
-            }
-            $selected[$name] = $best.Version
         }
-        if ($null -eq $selected) {
+        if ($missing -or $blockedBy) {
+            # Remember a schema that only the versions already loaded in this window kept from being used
+            if (-not $missing -and -not $skippedBecauseLoaded) {
+                $skippedBecauseLoaded = $blockedBy
+            }
             continue
         }
 
@@ -1183,6 +1193,7 @@ function Select-SOAModulePair {
             Order = @($order | Where-Object {$ModuleName -contains $_})
             Versions = $selected
             Conflict = $conflict
+            SkippedBecauseLoaded = $skippedBecauseLoaded
         }
     }
     return $null
@@ -1222,6 +1233,10 @@ function Import-SOARequiredModules {
     }
     if ($pair.Conflict) {
         return [pscustomobject]@{Success = $false; Schema = $pair.Schema; ImportOrder = $null; Modules = @(); Message = $pair.Conflict}
+    }
+    if ($pair.SkippedBecauseLoaded) {
+        $older = ($pair.Versions.Keys | Sort-Object | ForEach-Object {"$_ $($pair.Versions[$_])"}) -join ' and '
+        Write-Warning -Message "$($pair.SkippedBecauseLoaded) is already loaded in this PowerShell window, so the older supported versions are used ($older). The newer supported versions are installed; to use them, open a new PowerShell window."
     }
 
     Write-Verbose "Import-SOARequiredModules: schema $($pair.Schema); import order: $(($pair.Order | ForEach-Object {"$_ $($pair.Versions[$_])"}) -join ', ')"
